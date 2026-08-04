@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "appointments_tech_slot_unique" ON "appointments" USING btree ("technician_id","scheduled_start") WHERE "appointments"."status" <> 'cancelled';

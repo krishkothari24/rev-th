@@ -8,5 +8,8 @@ export default defineConfig({
     // sequentially keeps their fixtures from colliding.
     fileParallelism: false,
     testTimeout: 15_000,
+    // Points DATABASE_URL at summit_air_test before src/config.ts loads —
+    // see packages/server/test/setup-env.ts for the one-time DB setup.
+    setupFiles: ['./packages/server/test/setup-env.ts'],
   },
 });

@@ -2,6 +2,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import { config, isProduction } from './config.js';
+import { registerToolRoutes } from './tools/routes.js';
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
@@ -45,6 +46,8 @@ export async function buildApp(): Promise<FastifyInstance> {
     env: config.NODE_ENV,
     time: new Date().toISOString(),
   }));
+
+  await app.register(registerToolRoutes, { prefix: '/tools' });
 
   return app;
 }

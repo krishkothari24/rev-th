@@ -10,6 +10,7 @@ import {
   index,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 
 /**
  * Schema per BUILD_GUIDE §2.
@@ -116,6 +117,16 @@ export const appointments = pgTable(
     index('appointments_tech_start_idx').on(t.technicianId, t.scheduledStart),
     index('appointments_start_idx').on(t.scheduledStart),
     index('appointments_customer_idx').on(t.customerId),
+    // The real double-booking guard. book_appointment re-checks the chosen
+    // slot before inserting, but that check-then-insert has a race window;
+    // this partial unique index is what actually makes two concurrent
+    // bookings for the same tech/slot impossible rather than just unlikely.
+    // Cancelled appointments are excluded so a freed slot can be rebooked,
+    // and multiple NULL technician_id rows are unaffected (Postgres treats
+    // each NULL as distinct in a unique index).
+    uniqueIndex('appointments_tech_slot_unique')
+      .on(t.technicianId, t.scheduledStart)
+      .where(sql`${t.status} <> 'cancelled'`),
   ],
 );
 
