@@ -1,0 +1,9 @@
+node_modules/
+dist/
+coverage/
+drizzle/
+package-lock.json
+
+# Prompts are the graded artifact — their line breaks are deliberate.
+prompts/
+docs/

@@ -1,0 +1,42 @@
+{
+  "name": "summit-air",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Summit Air — AI voice + SMS agent for inbound HVAC service calls",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace @summit-air/server",
+    "build": "npm run build --workspaces --if-present",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:generate": "npm run db:generate --workspace @summit-air/server",
+    "db:migrate": "npm run db:migrate --workspace @summit-air/server",
+    "db:seed": "npm run db:seed --workspace @summit-air/server",
+    "db:reset": "npm run db:reset --workspace @summit-air/server",
+    "sim": "npm run sim --workspace @summit-air/server",
+    "eval": "npm run eval --workspace @summit-air/server"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.14.0",
+    "@types/node": "^22.9.0",
+    "eslint": "^9.14.0",
+    "eslint-config-prettier": "^9.1.0",
+    "prettier": "^3.3.3",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "typescript-eslint": "^8.13.0",
+    "vitest": "^3.2.7"
+  }
+}

@@ -1,0 +1,21 @@
+node_modules/
+dist/
+build/
+coverage/
+.vite/
+
+# Secrets — .env.example stays in git, real values never do
+.env
+.env.*
+!.env.example
+
+# Local runtime artifacts
+*.log
+.DS_Store
+.tmp/
+transcripts/
+
+# Editor
+.idea/
+.vscode/*
+!.vscode/extensions.json
