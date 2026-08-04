@@ -57,7 +57,10 @@ export async function findAvailableSlots(opts: {
   horizon.setDate(horizon.getDate() + SEARCH_DAYS);
 
   const existing = await db
-    .select({ technicianId: appointments.technicianId, scheduledStart: appointments.scheduledStart })
+    .select({
+      technicianId: appointments.technicianId,
+      scheduledStart: appointments.scheduledStart,
+    })
     .from(appointments)
     .where(
       and(
@@ -128,7 +131,11 @@ export async function findTechnicianForSlot(opts: {
   return free ? { id: free.id, name: free.name } : null;
 }
 
-const DAY_FMT = new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+const DAY_FMT = new Intl.DateTimeFormat('en-US', {
+  weekday: 'short',
+  month: 'short',
+  day: 'numeric',
+});
 const TIME_FMT = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' });
 
 /** e.g. "Tue, Aug 5, 2:00 PM–4:00 PM" — speakable, not a raw ISO timestamp. */

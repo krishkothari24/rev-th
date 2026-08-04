@@ -18,7 +18,9 @@ export const transferToHumanSchema = z
 
 export type TransferToHumanArgs = z.infer<typeof transferToHumanSchema>;
 
-export function transferToHumanService(args: TransferToHumanArgs): Promise<Record<string, unknown>> {
+export function transferToHumanService(
+  args: TransferToHumanArgs,
+): Promise<Record<string, unknown>> {
   eventBus.publish({ type: 'transfer.requested', callId: args.call_id, reason: args.reason });
   return Promise.resolve({
     transfer: true,

@@ -14,6 +14,7 @@ The agent's system prompt lives at **`prompts/agent_system_prompt.md`** and is
 loaded at runtime — it is a first-class source file, not a string literal.
 
 ## Stack
+
 - Voice: Retell AI (managed STT/TTS/turn-taking) + Twilio number
 - SMS: Twilio Messaging + a text-mode agent sharing the same tool layer
 - Backend: Node + Fastify + TypeScript, Drizzle ORM, Postgres
@@ -23,7 +24,9 @@ loaded at runtime — it is a first-class source file, not a string literal.
 - Host: Railway (backend + Postgres + dashboard)
 
 ## Commands
+
 (fill in once scaffolded)
+
 - `npm run dev` — backend + dashboard dev servers
 - `npm run lint` / `npm run typecheck` — both must pass before any commit
 - `npm run db:migrate` / `npm run db:seed` — schema + demo data
@@ -33,6 +36,7 @@ loaded at runtime — it is a first-class source file, not a string literal.
 ## Non-negotiable rules
 
 **Safety and correctness**
+
 - The gas-leak safety branch must be enforceable in code, not prompt-only. If
   the transcript matches gas-leak indicators, the emergency path fires
   regardless of what the model decided. A prompt is not a safety control.
@@ -45,7 +49,8 @@ loaded at runtime — it is a first-class source file, not a string literal.
   safety-related, not left to the model's discretion.
 
 **Security**
-- Caller ID is *not* authentication. A matched phone number may personalize
+
+- Caller ID is _not_ authentication. A matched phone number may personalize
   greeting and pull service history, but must never read back full address,
   payment info, or account details without the caller stating them first. See
   BUILD_GUIDE §8.2.
@@ -65,6 +70,7 @@ loaded at runtime — it is a first-class source file, not a string literal.
   before any further send. This is legal compliance, not a nice-to-have.
 
 **Architecture**
+
 - Voice and SMS share one tool layer and one triage module. Channel-specific
   logic lives only in the transport adapters. Do not fork the business logic.
 - Tool handlers are idempotent, keyed on `call_id` + tool name + args hash.
@@ -73,6 +79,7 @@ loaded at runtime — it is a first-class source file, not a string literal.
   after the response is queued, never inline in the request path.
 
 ## Workflow
+
 - Work one phase at a time (BUILD_GUIDE §9). Don't start the next phase until
   the current one runs and is committed.
 - Use `npm run sim` to iterate on prompt changes. Only place real calls to

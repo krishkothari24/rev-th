@@ -20,7 +20,9 @@ export const checkAvailabilitySchema = z
 
 export type CheckAvailabilityArgs = z.infer<typeof checkAvailabilitySchema>;
 
-export async function checkAvailabilityService(args: CheckAvailabilityArgs): Promise<Record<string, unknown>> {
+export async function checkAvailabilityService(
+  args: CheckAvailabilityArgs,
+): Promise<Record<string, unknown>> {
   const slots = await findAvailableSlots({
     county: args.county,
     requiredSkills: args.required_skills,
@@ -28,7 +30,10 @@ export async function checkAvailabilityService(args: CheckAvailabilityArgs): Pro
   });
 
   if (slots.length === 0) {
-    const skillNote = args.required_skills.length > 0 ? ` with ${args.required_skills.join('/')} certification` : '';
+    const skillNote =
+      args.required_skills.length > 0
+        ? ` with ${args.required_skills.join('/')} certification`
+        : '';
     return {
       slots: [],
       note: `No technicians${skillNote} are open in ${args.county} County in the next ${SEARCH_DAYS} days — I can flag this for a callback or check a neighboring county.`,
@@ -41,6 +46,9 @@ export async function checkAvailabilityService(args: CheckAvailabilityArgs): Pro
       end: s.end.toISOString(),
       label: formatSlotLabel(s.start, s.end),
     })),
-    note: args.urgency === 'emergency' ? 'These are the earliest available dispatch windows.' : undefined,
+    note:
+      args.urgency === 'emergency'
+        ? 'These are the earliest available dispatch windows.'
+        : undefined,
   };
 }

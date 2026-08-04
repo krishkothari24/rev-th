@@ -62,9 +62,16 @@ function firstNameOf(fullName: string): string {
  * can't quietly overwrite a real customer's address. New customers are
  * created from exactly what was collected on this call.
  */
-async function findOrCreateCustomer(args: BookAppointmentArgs): Promise<{ id: string; phone: string; county: County }> {
-  const [existing] = await db.select().from(customers).where(eq(customers.phone, args.phone)).limit(1);
-  if (existing) return { id: existing.id, phone: existing.phone, county: existing.county as County };
+async function findOrCreateCustomer(
+  args: BookAppointmentArgs,
+): Promise<{ id: string; phone: string; county: County }> {
+  const [existing] = await db
+    .select()
+    .from(customers)
+    .where(eq(customers.phone, args.phone))
+    .limit(1);
+  if (existing)
+    return { id: existing.id, phone: existing.phone, county: existing.county as County };
 
   const [created] = await db
     .insert(customers)
@@ -86,12 +93,17 @@ async function findOrCreateCustomer(args: BookAppointmentArgs): Promise<{ id: st
 // get rejected as "in the past."
 const PAST_GRACE_MS = 5 * 60 * 1000;
 
-export async function bookAppointmentService(args: BookAppointmentArgs): Promise<Record<string, unknown>> {
+export async function bookAppointmentService(
+  args: BookAppointmentArgs,
+): Promise<Record<string, unknown>> {
   const start = new Date(args.scheduled_start);
   const end = new Date(start.getTime() + SLOT_HOURS * 60 * 60 * 1000);
 
   if (start.getTime() < Date.now() - PAST_GRACE_MS) {
-    return { booked: false, note: 'That time has already passed — let’s find something upcoming instead.' };
+    return {
+      booked: false,
+      note: 'That time has already passed — let’s find something upcoming instead.',
+    };
   }
 
   const customer = await findOrCreateCustomer(args);
@@ -156,7 +168,10 @@ export async function bookAppointmentService(args: BookAppointmentArgs): Promise
     };
   } catch (err) {
     if (isUniqueViolation(err, 'appointments_tech_slot_unique')) {
-      return { booked: false, note: 'That slot was just taken — want me to find the next available time?' };
+      return {
+        booked: false,
+        note: 'That slot was just taken — want me to find the next available time?',
+      };
     }
     throw err;
   }

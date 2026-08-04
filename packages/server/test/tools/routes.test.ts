@@ -83,7 +83,10 @@ describe('POST /tools/*', () => {
     expect(second.statusCode).toBe(200);
     expect(second.json()).toEqual(first.json());
 
-    const rows = await db.select().from(appointments).where(eq(appointments.customerId, fx.customerId));
+    const rows = await db
+      .select()
+      .from(appointments)
+      .where(eq(appointments.customerId, fx.customerId));
     expect(rows).toHaveLength(1);
   });
 
@@ -113,7 +116,12 @@ describe('POST /tools/*', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/tools/flag_emergency',
-      payload: { call_id: 'http-emg-1', phone: fx.customerPhone, address: '100 Test Ln', reason: 'gas_smell' },
+      payload: {
+        call_id: 'http-emg-1',
+        phone: fx.customerPhone,
+        address: '100 Test Ln',
+        reason: 'gas_smell',
+      },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().flagged).toBe(true);

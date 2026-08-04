@@ -59,7 +59,10 @@ describe('runTool idempotency wrapper', () => {
     await runTool('noop', args, async () => ({ ok: true }));
     await runTool('noop', args, async () => ({ ok: true }));
 
-    const rows = await db.select().from(toolInvocations).where(eq(toolInvocations.toolName, 'noop'));
+    const rows = await db
+      .select()
+      .from(toolInvocations)
+      .where(eq(toolInvocations.toolName, 'noop'));
     expect(rows).toHaveLength(1);
   });
 });

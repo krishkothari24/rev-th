@@ -40,7 +40,10 @@ export function isSkill(value: string): value is Skill {
  * against. Callers say "Marietta" or "Cobb County", never "Cobb".
  */
 export function resolveCounty(input: string): County | null {
-  const cleaned = input.trim().toLowerCase().replace(/\s+county$/, '');
+  const cleaned = input
+    .trim()
+    .toLowerCase()
+    .replace(/\s+county$/, '');
   for (const county of COUNTIES) {
     if (county.toLowerCase() === cleaned) return county;
   }

@@ -7,13 +7,22 @@ describe('transfer_to_human', () => {
     const events: DashboardEvent[] = [];
     const unsubscribe = eventBus.subscribe((e) => events.push(e));
 
-    const args = transferToHumanSchema.parse({ call_id: 'call-transfer-1', reason: 'caller wants to speak to a manager' });
+    const args = transferToHumanSchema.parse({
+      call_id: 'call-transfer-1',
+      reason: 'caller wants to speak to a manager',
+    });
     const result = await transferToHumanService(args);
     unsubscribe();
 
     expect(result.transfer).toBe(true);
     expect(typeof result.message).toBe('string');
-    expect(events).toEqual([{ type: 'transfer.requested', callId: 'call-transfer-1', reason: 'caller wants to speak to a manager' }]);
+    expect(events).toEqual([
+      {
+        type: 'transfer.requested',
+        callId: 'call-transfer-1',
+        reason: 'caller wants to speak to a manager',
+      },
+    ]);
   });
 
   it('rejects an empty reason', () => {

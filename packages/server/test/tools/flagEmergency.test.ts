@@ -24,7 +24,10 @@ describe('flag_emergency', () => {
     const result = await flagEmergencyService(args);
     expect(result.flagged).toBe(true);
 
-    const [row] = await db.select().from(emergencyFlags).where(eq(emergencyFlags.callId, 'call-emg-1'));
+    const [row] = await db
+      .select()
+      .from(emergencyFlags)
+      .where(eq(emergencyFlags.callId, 'call-emg-1'));
     expect(row?.customerId).toBe(fx.customerId);
     expect(row?.reason).toBe('gas_smell');
   });
@@ -39,7 +42,10 @@ describe('flag_emergency', () => {
     const result = await flagEmergencyService(args);
     expect(result.flagged).toBe(true);
 
-    const [row] = await db.select().from(emergencyFlags).where(eq(emergencyFlags.callId, 'call-emg-2'));
+    const [row] = await db
+      .select()
+      .from(emergencyFlags)
+      .where(eq(emergencyFlags.callId, 'call-emg-2'));
     expect(row?.customerId).toBeNull();
   });
 
@@ -62,7 +68,10 @@ describe('flag_emergency', () => {
     const secondResult = await flagEmergencyService(second);
     expect(secondResult.already_flagged).toBe(true);
 
-    const rows = await db.select().from(emergencyFlags).where(eq(emergencyFlags.callId, 'call-emg-3'));
+    const rows = await db
+      .select()
+      .from(emergencyFlags)
+      .where(eq(emergencyFlags.callId, 'call-emg-3'));
     expect(rows).toHaveLength(1);
     expect(rows[0]?.reason).toBe('gas_smell'); // the original flag, unchanged
   });
@@ -79,7 +88,10 @@ describe('flag_emergency', () => {
     const second = await runTool('flag_emergency', args, () => flagEmergencyService(args));
     expect(second).toEqual(first);
 
-    const rows = await db.select().from(emergencyFlags).where(eq(emergencyFlags.callId, 'call-emg-4'));
+    const rows = await db
+      .select()
+      .from(emergencyFlags)
+      .where(eq(emergencyFlags.callId, 'call-emg-4'));
     expect(rows).toHaveLength(1);
   });
 

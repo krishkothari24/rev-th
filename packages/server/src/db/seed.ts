@@ -76,18 +76,68 @@ interface TechSeed {
 }
 
 const TECHNICIANS: TechSeed[] = [
-  { name: 'Marcus Webb', homeCounty: 'Cobb', skills: ['residential', 'gas', 'diagnostics'], active: true },
-  { name: 'Dana Ferris', homeCounty: 'Cobb', skills: ['residential', 'electrical', 'diagnostics'], active: true },
-  { name: 'Tyrell Osei', homeCounty: 'Cobb', skills: ['commercial', 'refrigerant_epa', 'diagnostics', 'gas'], active: true },
-  { name: 'Priya Chandran', homeCounty: 'Cobb', skills: ['residential', 'install', 'diagnostics'], active: true },
-  { name: 'Renata Kim', homeCounty: 'Cobb', skills: ['residential', 'commercial', 'gas', 'refrigerant_epa'], active: false },
+  {
+    name: 'Marcus Webb',
+    homeCounty: 'Cobb',
+    skills: ['residential', 'gas', 'diagnostics'],
+    active: true,
+  },
+  {
+    name: 'Dana Ferris',
+    homeCounty: 'Cobb',
+    skills: ['residential', 'electrical', 'diagnostics'],
+    active: true,
+  },
+  {
+    name: 'Tyrell Osei',
+    homeCounty: 'Cobb',
+    skills: ['commercial', 'refrigerant_epa', 'diagnostics', 'gas'],
+    active: true,
+  },
+  {
+    name: 'Priya Chandran',
+    homeCounty: 'Cobb',
+    skills: ['residential', 'install', 'diagnostics'],
+    active: true,
+  },
+  {
+    name: 'Renata Kim',
+    homeCounty: 'Cobb',
+    skills: ['residential', 'commercial', 'gas', 'refrigerant_epa'],
+    active: false,
+  },
 
-  { name: 'Wesley Hartmann', homeCounty: 'Cherokee', skills: ['residential', 'electrical', 'diagnostics'], active: true },
-  { name: 'Sofia Reyes', homeCounty: 'Cherokee', skills: ['residential', 'gas', 'install'], active: true },
-  { name: 'Aiden Kowalski', homeCounty: 'Cherokee', skills: ['commercial', 'refrigerant_epa', 'diagnostics'], active: true },
+  {
+    name: 'Wesley Hartmann',
+    homeCounty: 'Cherokee',
+    skills: ['residential', 'electrical', 'diagnostics'],
+    active: true,
+  },
+  {
+    name: 'Sofia Reyes',
+    homeCounty: 'Cherokee',
+    skills: ['residential', 'gas', 'install'],
+    active: true,
+  },
+  {
+    name: 'Aiden Kowalski',
+    homeCounty: 'Cherokee',
+    skills: ['commercial', 'refrigerant_epa', 'diagnostics'],
+    active: true,
+  },
 
-  { name: 'Nate Brubaker', homeCounty: 'Paulding', skills: ['residential', 'electrical', 'diagnostics'], active: true },
-  { name: 'Colin Vasquez', homeCounty: 'Paulding', skills: ['gas', 'residential', 'diagnostics'], active: true },
+  {
+    name: 'Nate Brubaker',
+    homeCounty: 'Paulding',
+    skills: ['residential', 'electrical', 'diagnostics'],
+    active: true,
+  },
+  {
+    name: 'Colin Vasquez',
+    homeCounty: 'Paulding',
+    skills: ['gas', 'residential', 'diagnostics'],
+    active: true,
+  },
 ];
 
 // -------------------------------------------------------------- customers
@@ -121,7 +171,14 @@ const CUSTOMERS: CustomerSeed[] = [
     county: 'Cobb',
     propertyType: 'residential',
     membershipTier: 'comfort_club',
-    equipment: [{ kind: 'heat_pump', installYear: 2019, lastServiceDaysAgo: 150, notes: 'Annual tune-up, system healthy.' }],
+    equipment: [
+      {
+        kind: 'heat_pump',
+        installYear: 2019,
+        lastServiceDaysAgo: 150,
+        notes: 'Annual tune-up, system healthy.',
+      },
+    ],
   },
   {
     name: 'James Whitfield',
@@ -188,8 +245,18 @@ const CUSTOMERS: CustomerSeed[] = [
     propertyType: 'commercial',
     membershipTier: 'comfort_club',
     equipment: [
-      { kind: 'rooftop_unit', installYear: 2019, lastServiceDaysAgo: 120, notes: 'Unit A, strip mall — multi-unit property' },
-      { kind: 'rooftop_unit', installYear: 2019, lastServiceDaysAgo: 120, notes: 'Unit B, strip mall — multi-unit property' },
+      {
+        kind: 'rooftop_unit',
+        installYear: 2019,
+        lastServiceDaysAgo: 120,
+        notes: 'Unit A, strip mall — multi-unit property',
+      },
+      {
+        kind: 'rooftop_unit',
+        installYear: 2019,
+        lastServiceDaysAgo: 120,
+        notes: 'Unit B, strip mall — multi-unit property',
+      },
     ],
   },
   {
@@ -296,7 +363,14 @@ const CUSTOMERS: CustomerSeed[] = [
     county: 'Paulding',
     propertyType: 'residential',
     membershipTier: 'comfort_club',
-    equipment: [{ kind: 'furnace', installYear: 2013, lastServiceDaysAgo: 200, notes: 'Natural gas furnace.' }],
+    equipment: [
+      {
+        kind: 'furnace',
+        installYear: 2013,
+        lastServiceDaysAgo: 200,
+        notes: 'Natural gas furnace.',
+      },
+    ],
   },
   {
     name: 'Rafael Iniguez',
@@ -314,7 +388,14 @@ const CUSTOMERS: CustomerSeed[] = [
     county: 'Paulding',
     propertyType: 'residential',
     membershipTier: 'basic',
-    equipment: [{ kind: 'furnace', installYear: 2008, lastServiceDaysAgo: 300, notes: 'Natural gas furnace.' }],
+    equipment: [
+      {
+        kind: 'furnace',
+        installYear: 2008,
+        lastServiceDaysAgo: 300,
+        notes: 'Natural gas furnace.',
+      },
+    ],
   },
   {
     name: 'Tobias Renner',
@@ -341,7 +422,14 @@ const CUSTOMERS: CustomerSeed[] = [
     county: 'Paulding',
     propertyType: 'residential',
     membershipTier: 'basic',
-    equipment: [{ kind: 'furnace', installYear: 2012, lastServiceDaysAgo: 400, notes: 'Natural gas furnace.' }],
+    equipment: [
+      {
+        kind: 'furnace',
+        installYear: 2012,
+        lastServiceDaysAgo: 400,
+        notes: 'Natural gas furnace.',
+      },
+    ],
   },
   {
     name: 'Selah Kwan',
@@ -476,7 +564,8 @@ async function main() {
 
         const requiredSkills = [isCommercial ? 'commercial' : 'residential', 'diagnostics'];
         if (tech.skills.includes('gas') && rng() < 0.3) requiredSkills.push('gas');
-        if (tech.skills.includes('refrigerant_epa') && rng() < 0.3) requiredSkills.push('refrigerant_epa');
+        if (tech.skills.includes('refrigerant_epa') && rng() < 0.3)
+          requiredSkills.push('refrigerant_epa');
 
         appointmentRows.push({
           id: randomUUID(),

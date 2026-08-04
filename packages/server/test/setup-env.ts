@@ -10,5 +10,6 @@
  *   createdb summit_air_test
  *   DATABASE_URL=postgres://localhost:5432/summit_air_test npx tsx src/db/migrate.ts
  */
-process.env.DATABASE_URL = process.env.TEST_DATABASE_URL ?? 'postgres://localhost:5432/summit_air_test';
+process.env.DATABASE_URL =
+  process.env.TEST_DATABASE_URL ?? 'postgres://localhost:5432/summit_air_test';
 process.env.NODE_ENV = 'test';

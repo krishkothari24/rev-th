@@ -29,7 +29,9 @@ const MONTH_FMT = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numer
 function describeEquipment(e: Equipment): string {
   const kind = e.kind.replace(/_/g, ' ');
   const installed = e.installYear ? ` installed ${e.installYear}` : '';
-  const serviced = e.lastServiceAt ? `, last serviced ${MONTH_FMT.format(e.lastServiceAt)}` : ', never serviced';
+  const serviced = e.lastServiceAt
+    ? `, last serviced ${MONTH_FMT.format(e.lastServiceAt)}`
+    : ', never serviced';
   return `${kind}${installed}${serviced}`;
 }
 
@@ -38,8 +40,14 @@ const MEMBERSHIP_LABEL: Record<string, string> = {
   basic: 'Basic plan member',
 };
 
-export async function customerLookupService(args: CustomerLookupArgs): Promise<Record<string, unknown>> {
-  const [customer] = await db.select().from(customers).where(eq(customers.phone, args.phone)).limit(1);
+export async function customerLookupService(
+  args: CustomerLookupArgs,
+): Promise<Record<string, unknown>> {
+  const [customer] = await db
+    .select()
+    .from(customers)
+    .where(eq(customers.phone, args.phone))
+    .limit(1);
   if (!customer) return { found: false };
 
   const equipmentRows = await db

@@ -42,7 +42,9 @@ describe('book_appointment', () => {
     const unsubscribe = eventBus.subscribe((e) => events.push(e));
 
     // County is deliberately wrong here — the customer's own record (Cobb) must win.
-    const args = bookAppointmentSchema.parse(baseArgs({ county: 'Cherokee', call_id: 'call-book-2' }));
+    const args = bookAppointmentSchema.parse(
+      baseArgs({ county: 'Cherokee', call_id: 'call-book-2' }),
+    );
     const result = await bookAppointmentService(args);
     unsubscribe();
 
@@ -50,12 +52,17 @@ describe('book_appointment', () => {
     expect(result.technician_first_name).toBe('Marcus'); // the only Cobb tech with 'gas'
     expect(typeof result.appointment_id).toBe('string');
 
-    const [appt] = await db.select().from(appointments).where(eq(appointments.customerId, fx.customerId));
+    const [appt] = await db
+      .select()
+      .from(appointments)
+      .where(eq(appointments.customerId, fx.customerId));
     expect(appt?.technicianId).toBe(fx.techCobbGasId);
     expect(appt?.status).toBe('booked');
 
     expect(events.some((e) => e.type === 'appointment.created')).toBe(true);
-    expect(events.some((e) => e.type === 'sms.queued' && e.kind === 'booking_confirmation')).toBe(true);
+    expect(events.some((e) => e.type === 'sms.queued' && e.kind === 'booking_confirmation')).toBe(
+      true,
+    );
   });
 
   it('creates a new customer record when the phone is unrecognized', async () => {
@@ -113,13 +120,17 @@ describe('book_appointment', () => {
   });
 
   it('rejects a scheduled_start well in the past', async () => {
-    const args = bookAppointmentSchema.parse(baseArgs({ call_id: 'call-book-8', scheduled_start: '2020-01-01T14:00:00.000Z' }));
+    const args = bookAppointmentSchema.parse(
+      baseArgs({ call_id: 'call-book-8', scheduled_start: '2020-01-01T14:00:00.000Z' }),
+    );
     const result = await bookAppointmentService(args);
     expect(result.booked).toBe(false);
   });
 
   it('rejects a malformed scheduled_start at the schema boundary', () => {
-    const parsed = bookAppointmentSchema.safeParse(baseArgs({ scheduled_start: 'next Tuesday afternoon' }));
+    const parsed = bookAppointmentSchema.safeParse(
+      baseArgs({ scheduled_start: 'next Tuesday afternoon' }),
+    );
     expect(parsed.success).toBe(false);
   });
 
@@ -134,7 +145,9 @@ describe('book_appointment', () => {
   });
 
   it('rejects an attempt to set a price or membership field — server-owned', () => {
-    const parsed = bookAppointmentSchema.safeParse(baseArgs({ price: 0, membership_tier: 'comfort_club' }));
+    const parsed = bookAppointmentSchema.safeParse(
+      baseArgs({ price: 0, membership_tier: 'comfort_club' }),
+    );
     expect(parsed.success).toBe(false);
   });
 });

@@ -29,8 +29,14 @@ export const flagEmergencySchema = z
 
 export type FlagEmergencyArgs = z.infer<typeof flagEmergencySchema>;
 
-export async function flagEmergencyService(args: FlagEmergencyArgs): Promise<Record<string, unknown>> {
-  const [existingCustomer] = await db.select({ id: customers.id }).from(customers).where(eq(customers.phone, args.phone)).limit(1);
+export async function flagEmergencyService(
+  args: FlagEmergencyArgs,
+): Promise<Record<string, unknown>> {
+  const [existingCustomer] = await db
+    .select({ id: customers.id })
+    .from(customers)
+    .where(eq(customers.phone, args.phone))
+    .limit(1);
   const customerId = existingCustomer?.id ?? null;
 
   try {
@@ -47,7 +53,13 @@ export async function flagEmergencyService(args: FlagEmergencyArgs): Promise<Rec
       .returning();
     if (!flag) throw new Error('emergency flag insert returned no row');
 
-    eventBus.publish({ type: 'emergency.flagged', emergencyId: flag.id, callId: args.call_id, reason: args.reason, customerId });
+    eventBus.publish({
+      type: 'emergency.flagged',
+      emergencyId: flag.id,
+      callId: args.call_id,
+      reason: args.reason,
+      customerId,
+    });
     eventBus.publish({
       type: 'sms.queued',
       kind: 'dispatcher_alert',
@@ -62,7 +74,11 @@ export async function flagEmergencyService(args: FlagEmergencyArgs): Promise<Rec
     };
   } catch (err) {
     if (isUniqueViolation(err, 'emergency_flags_call_idx')) {
-      const [already] = await db.select().from(emergencyFlags).where(eq(emergencyFlags.callId, args.call_id)).limit(1);
+      const [already] = await db
+        .select()
+        .from(emergencyFlags)
+        .where(eq(emergencyFlags.callId, args.call_id))
+        .limit(1);
       return {
         flagged: true,
         emergency_id: already?.id ?? null,

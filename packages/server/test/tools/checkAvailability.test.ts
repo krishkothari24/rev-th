@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { resetDb, seedFixtures } from '../helpers/db.js';
-import { checkAvailabilitySchema, checkAvailabilityService } from '../../src/tools/checkAvailability.js';
+import {
+  checkAvailabilitySchema,
+  checkAvailabilityService,
+} from '../../src/tools/checkAvailability.js';
 
 describe('check_availability', () => {
   beforeEach(async () => {
