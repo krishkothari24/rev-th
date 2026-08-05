@@ -44,6 +44,22 @@ const schema = z.object({
 
   DASHBOARD_BASIC_AUTH_USER: z.string().optional(),
   DASHBOARD_BASIC_AUTH_PASS: z.string().optional(),
+}).superRefine((env, ctx) => {
+  // Exactly one of the pair set is unambiguously a config mistake (a typo'd
+  // var name pasting into Railway, most likely) — and dashboardAuthConfigured()
+  // treats "not both set" as "auth disabled," so silently accepting this
+  // would fail open: the dashboard ships with no auth and no warning. Fail
+  // the boot instead of fail open.
+  const hasUser = Boolean(env.DASHBOARD_BASIC_AUTH_USER);
+  const hasPass = Boolean(env.DASHBOARD_BASIC_AUTH_PASS);
+  if (hasUser !== hasPass) {
+    const missing = hasUser ? 'DASHBOARD_BASIC_AUTH_PASS' : 'DASHBOARD_BASIC_AUTH_USER';
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: [missing],
+      message: `${missing} must be set alongside its pair — the dashboard would otherwise deploy with no auth at all. Set both, or clear both to leave the dashboard unauthenticated on purpose.`,
+    });
+  }
 });
 
 function load(): z.infer<typeof schema> {
