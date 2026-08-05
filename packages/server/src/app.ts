@@ -6,6 +6,8 @@ import websocket from '@fastify/websocket';
 import { config, isProduction, resolveAllowedDashboardOrigins } from './config.js';
 import { registerToolRoutes } from './tools/routes.js';
 import { registerDashboardRoutes } from './dashboard/routes.js';
+import { registerDashboardStatic } from './dashboard/static.js';
+import { dashboardAuthConfigured, requireDashboardBasicAuth } from './dashboard/basicAuth.js';
 import { registerEventsRoute } from './events/sse.js';
 import { registerEventsRelayRoute } from './events/relay.js';
 import { registerSmsOutboundSubscriber } from './sms/outboundSubscriber.js';
@@ -64,8 +66,23 @@ export async function buildApp(): Promise<FastifyInstance> {
   }));
 
   await app.register(registerToolRoutes, { prefix: '/tools' });
-  await app.register(registerDashboardRoutes, { prefix: '/dashboard' });
-  await app.register(registerEventsRoute);
+
+  // Everything a browser loads to view the dashboard — the static build,
+  // its REST surface, and the SSE stream — lives in one encapsulated scope
+  // so a single onRequest hook covers all three (BUILD_GUIDE §8.5). Signed
+  // webhooks, the LLM socket, and /tools/* stay outside: they authenticate
+  // themselves and Railway's healthcheck needs /health reachable regardless.
+  await app.register(async (dashboardScope) => {
+    if (dashboardAuthConfigured()) {
+      dashboardScope.addHook('onRequest', async (req, reply) => {
+        requireDashboardBasicAuth(req, reply);
+      });
+    }
+    await dashboardScope.register(registerDashboardStatic);
+    await dashboardScope.register(registerDashboardRoutes, { prefix: '/dashboard' });
+    await dashboardScope.register(registerEventsRoute);
+  });
+
   await app.register(registerEventsRelayRoute);
   await app.register(registerTwilioSmsRoute);
   await app.register(registerRetellWebhookRoute);

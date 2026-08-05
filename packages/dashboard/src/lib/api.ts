@@ -1,6 +1,10 @@
 import type { DashboardState } from '../types/api';
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL;
+// Local dev points this at the backend's own port (see .env.example);
+// Phase 9's production build leaves it blank on purpose — the dashboard is
+// served same-origin off the backend (dashboard/static.ts), so relative
+// URLs are correct and `new URL(path, '')` would throw.
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || window.location.origin;
 
 export function eventsUrl(): string {
   return `${BASE_URL}/events`;
