@@ -2,9 +2,10 @@
  * POST /tools/* — the five tools as HTTP endpoints (BUILD_GUIDE §4). This is
  * what Phase 2 curl-tests against. The voice agent loop (Phase 4+) is a
  * Custom LLM WebSocket running in this same process, so it calls the
- * `*Service` functions in-process for latency rather than looping back
- * through HTTP — but SMS, curl, and any other external caller go through
- * these routes, and both paths run the identical service function. One tool
+ * `*Service` functions in-process for latency via `registry.ts`'s
+ * `dispatchTool` rather than looping back through HTTP — but SMS, curl, and
+ * any other external caller go through these routes, and both paths run the
+ * identical (schema, service) pair defined once in `registry.ts`. One tool
  * layer, per CLAUDE.md's "voice and SMS share one tool layer."
  *
  * Each handler: Zod-validate → runTool (idempotency) → reply. No signature
@@ -16,11 +17,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { z } from 'zod';
 import { runTool } from './runTool.js';
-import { customerLookupSchema, customerLookupService } from './customerLookup.js';
-import { checkAvailabilitySchema, checkAvailabilityService } from './checkAvailability.js';
-import { bookAppointmentSchema, bookAppointmentService } from './bookAppointment.js';
-import { flagEmergencySchema, flagEmergencyService } from './flagEmergency.js';
-import { transferToHumanSchema, transferToHumanService } from './transferToHuman.js';
+import { TOOL_ENTRIES } from './registry.js';
 
 async function handleTool<TArgs extends { call_id: string }>(
   toolName: string,
@@ -47,19 +44,9 @@ async function handleTool<TArgs extends { call_id: string }>(
 export async function registerToolRoutes(app: FastifyInstance): Promise<void> {
   const rateLimited = { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } };
 
-  app.post('/customer_lookup', rateLimited, (req, reply) =>
-    handleTool('customer_lookup', customerLookupSchema, customerLookupService, req, reply),
-  );
-  app.post('/check_availability', rateLimited, (req, reply) =>
-    handleTool('check_availability', checkAvailabilitySchema, checkAvailabilityService, req, reply),
-  );
-  app.post('/book_appointment', rateLimited, (req, reply) =>
-    handleTool('book_appointment', bookAppointmentSchema, bookAppointmentService, req, reply),
-  );
-  app.post('/flag_emergency', rateLimited, (req, reply) =>
-    handleTool('flag_emergency', flagEmergencySchema, flagEmergencyService, req, reply),
-  );
-  app.post('/transfer_to_human', rateLimited, (req, reply) =>
-    handleTool('transfer_to_human', transferToHumanSchema, transferToHumanService, req, reply),
-  );
+  for (const toolEntry of TOOL_ENTRIES) {
+    app.post(`/${toolEntry.name}`, rateLimited, (req, reply) =>
+      handleTool(toolEntry.name, toolEntry.schema, toolEntry.service, req, reply),
+    );
+  }
 }

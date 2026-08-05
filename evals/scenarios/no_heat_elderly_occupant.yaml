@@ -1,0 +1,18 @@
+# TEST_SCENARIOS.md #2 — total heat loss with a vulnerable person volunteered
+# up front. Not gas, so the *deterministic safety override* must NOT fire
+# (this is triage's priority path, not the emergency path) — but
+# prompts/agent_system_prompt.md's Tool-use section explicitly instructs
+# flag_emergency for "a high-priority no-heat/no-AC situation," and
+# emergency_flags.reason has a dedicated `no_heat_vulnerable` value for
+# exactly this, so a model actually following the prompt should still flag
+# it, just with that reason instead of gas_smell.
+name: no_heat_elderly_occupant
+turns:
+  - user: "My furnace died last night — it's my grandmother's house and she's 84."
+  - user: "We're at 212 Birch Hollow Way in Canton, Cherokee County. Phone's 770-555-0142, name's Elena Boyd."
+  - user: "Whatever's soonest works for us."
+assert:
+  - tool_called: check_availability
+  - tool_arg: { tool: check_availability, key: urgency, equals: priority }
+  - tool_called: flag_emergency
+  - tool_arg: { tool: flag_emergency, key: reason, equals: no_heat_vulnerable }

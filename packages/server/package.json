@@ -18,6 +18,7 @@
     "eval": "tsx ../../evals/runner.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
     "@fastify/cors": "^10.0.1",
     "@fastify/rate-limit": "^10.1.1",
     "dotenv": "^16.4.5",

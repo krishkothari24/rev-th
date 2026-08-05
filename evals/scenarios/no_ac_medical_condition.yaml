@@ -1,0 +1,15 @@
+# TEST_SCENARIOS.md #3 — total cooling loss plus a medical condition. Same
+# priority + flag_emergency path as no_heat_elderly_occupant.yaml (see that
+# file's comment), exercised on the cooling side and via a different
+# vulnerable-person pattern (SPECIFIC_MEDICAL_TERMS in
+# triage/vulnerability.ts, not ELDERLY) and the `no_ac_vulnerable` reason.
+name: no_ac_medical_condition
+turns:
+  - user: "AC's been out two days and my son has asthma — it's brutal in the house right now."
+  - user: "410 Millpond Dr, Kennesaw, Cobb County. Name's Trevor Nash, number's 770-555-0163."
+  - user: 'Today if at all possible.'
+assert:
+  - tool_called: check_availability
+  - tool_arg: { tool: check_availability, key: urgency, equals: priority }
+  - tool_called: flag_emergency
+  - tool_arg: { tool: flag_emergency, key: reason, equals: no_ac_vulnerable }

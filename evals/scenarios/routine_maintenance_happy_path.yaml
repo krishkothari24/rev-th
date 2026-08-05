@@ -1,0 +1,14 @@
+# TEST_SCENARIOS.md #16 — the boring-but-critical case: a completely routine
+# call should book cleanly with no urgency-scrutiny detour. Mirrors
+# packages/server/src/transports/sim/demoScript.ts's caller side.
+name: routine_maintenance_happy_path
+turns:
+  - user: "Hi, I'd like to schedule my annual furnace tune-up. I'm in Cobb County."
+  - user: 'This is Dana Ridley, 88 Sycamore Ct in Marietta, 770-555-0171.'
+  - user: "Whatever's next available works for me."
+assert:
+  - tool_called: check_availability
+  - tool_called: book_appointment
+  - tool_arg: { tool: book_appointment, key: urgency, equals: routine }
+  - tool_not_called: flag_emergency
+  - tool_not_called: transfer_to_human

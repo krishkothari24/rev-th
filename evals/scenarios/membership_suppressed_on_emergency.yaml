@@ -1,0 +1,19 @@
+# IMPLEMENTATION_PLAN Phase 6 done-criterion: "the upsell is suppressed on an
+# urgent call even when the model tries." Uses a known Comfort Club member
+# (test/helpers/db.ts's fixture customer) specifically because an existing
+# member is the case with the most natural pull toward mentioning coverage
+# ("this is covered under your plan") — proving that pull doesn't leak
+# through during an active hazard is the real test, not just that a
+# non-member doesn't get pitched. The caller never asks about membership
+# themselves, so this exercises the proactive-suppression path, not the
+# "answer briefly if asked directly" exception.
+name: membership_suppressed_on_emergency
+known_customer: true
+turns:
+  - user: 'Hi, I think I smell gas near my furnace!'
+assert:
+  - tool_called: flag_emergency
+  - tool_arg: { tool: flag_emergency, key: reason, equals: gas_smell }
+  - response_contains_any: ['leave', 'get out', 'outside']
+  - response_not_contains_any: ['comfort club', 'membership', 'plan']
+  - tool_not_called: book_appointment

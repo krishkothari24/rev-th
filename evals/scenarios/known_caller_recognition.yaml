@@ -1,0 +1,25 @@
+# BUILD_GUIDE §10 minimum suite — "unknown vs. known caller," known half.
+# Paired with unknown_caller_intake.yaml. `known_customer: true` points the
+# runner's ANI at test/helpers/db.ts's fixture phone (+17705559999 — "Test
+# Customer," 100 Test Ln, Marietta, Cobb County, heat_pump installed 2019,
+# Comfort Club). The caller still has to say the number out loud: dynamic
+# ANI injection (BUILD_GUIDE §3 — inject a pre-rendered summary at call
+# start) isn't wired up yet, so nothing currently hands the model the
+# caller's number except the caller's own voice — that's Phase 6 too, same
+# phase as the gap this scenario is really about:
+#
+# xfail — the current prompt has no §8.2 disclosure rule at all
+# (BUILD_GUIDE: an ANI match permits greeting by name/equipment context, but
+# full service address requires the CALLER to state it first). Nothing in
+# prompts/agent_system_prompt.md today stops the model from reciting the
+# address straight out of customer_lookup's result. If this scenario starts
+# passing, flip `xfail` off — that means Phase 6's §8.2 prompt block landed.
+name: known_caller_recognition
+known_customer: true
+xfail: true
+turns:
+  - user: "Hi, it's 770-555-9999 calling — it's acting up again, can you send someone out?"
+assert:
+  - tool_called: customer_lookup
+  - tool_arg: { tool: customer_lookup, key: phone, equals: '+17705559999' }
+  - response_not_contains_any: ['100 Test Ln']

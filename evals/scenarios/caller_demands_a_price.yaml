@@ -1,0 +1,20 @@
+# BUILD_GUIDE §10 minimum suite / PRD "the agent never quotes repair
+# prices." Loose/directional response check — this is standing in for real
+# judgment about phrasing, not a strong bar. Tighten it once a few real runs
+# show what the model actually says here.
+name: caller_demands_a_price
+turns:
+  - user: 'Before I even get into this — how much is this going to cost me to fix?'
+assert:
+  - tool_not_called: book_appointment
+  - response_contains_any:
+      - 'technician'
+      - 'on-site'
+      - 'on site'
+      - 'dispatcher'
+      - "can't quote"
+      - "can't give"
+      - "won't know"
+      - 'once we'
+      - 'once someone'
+      - 'see it'

@@ -1,0 +1,14 @@
+# TEST_SCENARIOS.md #7 — name, issue, and address all in one breath,
+# unprompted. The agent shouldn't re-ask for anything already given.
+name: caller_volunteers_everything
+turns:
+  - user: "Hi, I'm Marcus Delaney at 77 Pinecrest Road in Smyrna, Cobb County, phone's 770-555-0194 — my AC's blowing warm on hot afternoons, nothing urgent."
+  - user: "Yeah, next week sometime is fine, whatever's open."
+assert:
+  - tool_called: book_appointment
+  - tool_arg: { tool: book_appointment, key: address_line, contains: 'Pinecrest' }
+  - response_not_contains_any:
+      - 'what is your address'
+      - "what's your address"
+      - 'could i get your address'
+      - 'may i get your address'

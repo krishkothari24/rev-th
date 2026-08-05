@@ -1,0 +1,15 @@
+# PRD "Revenue Recovery" / IMPLEMENTATION_PLAN Phase 6 — non-members on a
+# routine call may hear about the plan, softly. Proactive-unprompted-mention
+# is inherently model-judgment ("only if it fits naturally" — the prompt
+# deliberately doesn't require it, to avoid sounding pushy), so asserting on
+# an unprompted mention would be flaky. This scenario instead proves the
+# permission plumbing actually enables the model to answer normally when the
+# caller asks directly, on a call the membership appendix line permits it —
+# the more reliable, still-meaningful version of the same check.
+name: membership_question_routine_nonmember
+turns:
+  - user: 'Hi, I need to schedule my annual furnace tune-up.'
+  - user: 'Before we get into times — do you guys have any kind of membership or plan?'
+assert:
+  - response_contains_any: ['comfort club', 'plan', 'member']
+  - tool_not_called: flag_emergency

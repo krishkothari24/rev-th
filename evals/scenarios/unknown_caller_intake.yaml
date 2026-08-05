@@ -1,0 +1,17 @@
+# BUILD_GUIDE §10 minimum suite — "unknown vs. known caller," unknown half.
+# Paired with known_caller_recognition.yaml. Uses the runner's auto-generated
+# caller phone (no `caller_phone`/`known_customer` set), which stays outside
+# every reserved seed/fixture number range — see
+# evals/lib/scenario.ts's generatedCallerPhone. The caller states their own
+# number on-mic: dynamic ANI injection isn't wired up yet (that's Phase 6 —
+# see known_caller_recognition.yaml's xfail note), so right now a phone
+# number only ever reaches the model if the caller says it.
+name: unknown_caller_intake
+turns:
+  - user: "Hi, I need someone out to look at my AC, it's not cooling well."
+  - user: 'Sure — Jordan Blake, 770-555-0233, 61 Fernwood Trace, Hiram, Paulding County.'
+  - user: 'Later this week is fine.'
+assert:
+  - tool_called: customer_lookup
+  - tool_arg: { tool: customer_lookup, key: phone, equals: '+17705550233' }
+  - tool_called: book_appointment

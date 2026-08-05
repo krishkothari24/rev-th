@@ -1,0 +1,24 @@
+# TEST_SCENARIOS.md #15 / BUILD_GUIDE §10 "commercial rooftop unit".
+#
+# xfail — known gap, tracked for Phase 6: triage/skills.ts's `commercial`
+# skill is derived from ConversationState.propertyType
+# (packages/server/src/agent/loop.ts), which only ever gets set from a
+# customer_lookup match or *after* a completed booking's own side effect.
+# A brand-new commercial caller's first (and, in this scenario, only)
+# booking runs triage while propertyType is still null, so required_skills
+# comes back ['residential'] even though the caller plainly said
+# "strip mall" / "rooftop unit" — the deterministic skill deriver never
+# reads the transcript for property type the way it does for gas/refrigerant
+# language. See docs/IMPLEMENTATION_PLAN.md Phase 6 ("Technician matching by
+# derived skills"). If this scenario starts passing, flip `xfail` off — that
+# means Phase 6 fixed it.
+name: commercial_rooftop_unit
+xfail: true
+turns:
+  - user: "Hi, I run a strip mall on Highway 9 and our rooftop unit isn't cooling right."
+  - user: "It's 4410 Highway 9, Kennesaw, Cobb County, suite B — this is Priya Suresh, 770-555-0188."
+  - user: "Tomorrow morning if you've got it."
+assert:
+  - tool_called: book_appointment
+  - tool_arg: { tool: book_appointment, key: property_type, equals: commercial }
+  - tool_arg: { tool: book_appointment, key: required_skills, contains: commercial }

@@ -1,0 +1,9 @@
+# TEST_SCENARIOS.md #11 — ask for a manager / complain about a past visit.
+# Out of scope for the agent; should transfer, not attempt to handle it.
+name: caller_requests_a_human
+turns:
+  - user: "I want to talk to a manager. Someone came out last month and I'm still upset about how that visit went."
+assert:
+  - tool_called: transfer_to_human
+  - tool_not_called: book_appointment
+  - tool_not_called: flag_emergency

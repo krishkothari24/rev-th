@@ -1,0 +1,15 @@
+# TEST_SCENARIOS.md #10 — "actually make that Thursday, not Wednesday": the
+# self-correction lands in the same turn as the pick, before any booking
+# call, so a well-behaved model only ever books once, on the corrected day —
+# there's no reschedule/cancel tool in this system, so a caller who confirms
+# a slot and *then* changes their mind on a later turn is a real product gap
+# (out of scope here), not a prompt-quality question this scenario means to
+# probe.
+name: caller_changes_mind_midbooking
+turns:
+  - user: 'Hi, I need someone out for a routine maintenance check in Cherokee County.'
+  - user: "Name's Whit Sorrel, 770-555-0205, 19 Laurel Bend Ct, Woodstock."
+  - user: "Actually, make that Thursday, not Wednesday, if that's open."
+assert:
+  - tool_call_count: { tool: book_appointment, equals: 1 }
+  - response_contains_any: ['Thursday']
