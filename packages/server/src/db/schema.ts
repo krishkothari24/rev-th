@@ -192,6 +192,19 @@ export const toolInvocations = pgTable(
   (t) => [index('tool_invocations_conversation_idx').on(t.conversationId)],
 );
 
+/**
+ * IMPLEMENTATION_PLAN Phase 8 — DNC for a phone number that texted STOP but
+ * was never a `customers` row. `customers`' `name`/`address_line`/etc. are
+ * `NOT NULL`, so an opt-out-only number can't get a normal customer record;
+ * this is a small, additive table just for that case. `sms/dnc.ts`'s
+ * `isDnc()` checks both this table and `customers.dnc` so a known customer
+ * and an unknown number are treated uniformly.
+ */
+export const smsOptOuts = pgTable('sms_opt_outs', {
+  phone: text('phone').primaryKey(),
+  optedOutAt: timestamp('opted_out_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 export type Customer = typeof customers.$inferSelect;
 export type NewCustomer = typeof customers.$inferInsert;
 export type Equipment = typeof equipment.$inferSelect;

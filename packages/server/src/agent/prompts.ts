@@ -10,7 +10,7 @@
 import { readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { repoRoot } from '../config.js';
-import type { MembershipTier } from '../db/schema.js';
+import type { Channel, MembershipTier } from '../db/schema.js';
 import type { ClassifyUrgencyResult } from '../triage/classify.js';
 import type { ConversationState } from './types.js';
 
@@ -49,6 +49,17 @@ export function loadPromptFile(name: string): string {
 
 export function loadAgentSystemPrompt(): string {
   return loadPromptFile('agent_system_prompt.md');
+}
+
+/**
+ * SMS gets its own leaner prompt file (IMPLEMENTATION_PLAN Phase 8) — terser
+ * turns, no turn-taking/barge-in framing, texting conventions. Safety-critical
+ * behavior is enforced in agent/loop.ts and agent/context.ts regardless of
+ * which file loads, so which prompt a channel gets is a conversational-style
+ * choice, not a safety one.
+ */
+function promptFileForChannel(channel: Channel): string {
+  return channel === 'sms' ? 'sms_agent_prompt.md' : 'agent_system_prompt.md';
 }
 
 const DATE_FMT = new Intl.DateTimeFormat('en-US', {
@@ -112,19 +123,22 @@ function membershipDirective(
  * before the appendix is added — the seam test/agent/sabotage.test.ts uses
  * to run with the real prompt's safety section physically stripped out.
  *
- * `recognizedCustomerSummary`/`knownMembershipTier`/`lastTriage` are
+ * `recognizedCustomerSummary`/`knownMembershipTier`/`lastTriage`/`channel` are
  * `Partial` here (rather than required, as they are on `ConversationState`)
  * so a caller that hasn't run call-start recognition yet — or a test fixture
- * — can omit them and get the unrecognized-caller/non-urgent defaults.
+ * — can omit them and get the unrecognized-caller/non-urgent/voice defaults.
  */
 export function buildSystemPromptForTurn(
   state: Pick<ConversationState, 'season' | 'systemPromptOverride'> &
     Partial<
-      Pick<ConversationState, 'recognizedCustomerSummary' | 'knownMembershipTier' | 'lastTriage'>
+      Pick<
+        ConversationState,
+        'recognizedCustomerSummary' | 'knownMembershipTier' | 'lastTriage' | 'channel'
+      >
     >,
   now: Date = new Date(),
 ): string {
-  const base = state.systemPromptOverride ?? loadAgentSystemPrompt();
+  const base = state.systemPromptOverride ?? loadPromptFile(promptFileForChannel(state.channel ?? 'voice'));
   let appendix = `${base}\n\n---\nToday is ${DATE_FMT.format(now)}. It's ${state.season} season.`;
 
   if (state.recognizedCustomerSummary) {

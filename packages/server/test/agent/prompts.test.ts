@@ -154,3 +154,34 @@ describe('buildSystemPromptForTurn — recognition + membership appendix (Phase 
     expect(result).toContain('Do not bring up or promote a membership plan on this call');
   });
 });
+
+describe('buildSystemPromptForTurn — channel-based prompt file (IMPLEMENTATION_PLAN Phase 8)', () => {
+  const fixedDate = new Date('2026-01-15T12:00:00Z');
+
+  it('defaults to the voice prompt when channel is omitted (parity with pre-Phase-8 behavior)', () => {
+    const result = buildSystemPromptForTurn({ season: 'heating' }, fixedDate);
+    expect(result).toContain('## Safety protocol — gas smell');
+    expect(result).toContain('Talk like a competent, warm human dispatcher');
+  });
+
+  it('loads the voice prompt for channel: voice', () => {
+    const result = buildSystemPromptForTurn({ season: 'heating', channel: 'voice' }, fixedDate);
+    expect(result).toContain('Talk like a competent, warm human dispatcher');
+  });
+
+  it('loads the distinct SMS prompt for channel: sms', () => {
+    const result = buildSystemPromptForTurn({ season: 'heating', channel: 'sms' }, fixedDate);
+    expect(result).toContain('## Safety protocol — gas smell');
+    expect(result).toContain('Texting conventions');
+    expect(result).not.toContain('Talk like a competent, warm human dispatcher');
+  });
+
+  it('systemPromptOverride still wins regardless of channel', () => {
+    const result = buildSystemPromptForTurn(
+      { season: 'heating', channel: 'sms', systemPromptOverride: 'SABOTAGED' },
+      fixedDate,
+    );
+    expect(result).toContain('SABOTAGED');
+    expect(result).not.toContain('Texting conventions');
+  });
+});

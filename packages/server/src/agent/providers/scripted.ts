@@ -13,7 +13,13 @@
  * contains a `tool_use` step naming `flag_emergency`, regardless of what the
  * caller said.
  */
-import type { AgentProvider, ContentBlock, ProviderRequest, ProviderResponse } from '../types.js';
+import type {
+  AgentProvider,
+  ContentBlock,
+  OnAssistantTextDelta,
+  ProviderRequest,
+  ProviderResponse,
+} from '../types.js';
 
 export type ScriptedStep =
   | { type: 'text'; text: string }
@@ -37,7 +43,14 @@ export class ScriptedProvider implements AgentProvider {
   // Declared `async` (not just Promise-returning) so a synchronous "script
   // exhausted" throw surfaces as a rejected promise, matching a real
   // provider's failure mode instead of throwing before the caller awaits.
-  async send(_request: ProviderRequest): Promise<ProviderResponse> {
+  //
+  // `onTextDelta`, when given, fires once with the step's full text (no
+  // chunking — a scripted fixture has no meaningful sub-token granularity to
+  // simulate) before returning, so the streaming path is exercisable in
+  // tests without a live model. A pure `tool_use` step with no `alsoText`
+  // fires zero deltas, matching a real provider that goes straight to a tool
+  // call with no preamble.
+  async send(_request: ProviderRequest, onTextDelta?: OnAssistantTextDelta): Promise<ProviderResponse> {
     const step = this.script.steps[this.cursor];
     if (!step) {
       throw new Error(
@@ -48,12 +61,16 @@ export class ScriptedProvider implements AgentProvider {
     this.cursor += 1;
 
     if (step.type === 'text') {
+      onTextDelta?.(step.text);
       const content: ContentBlock[] = [{ type: 'text', text: step.text }];
       return { content, stopReason: 'end_turn' };
     }
 
     const content: ContentBlock[] = [];
-    if (step.alsoText) content.push({ type: 'text', text: step.alsoText });
+    if (step.alsoText) {
+      onTextDelta?.(step.alsoText);
+      content.push({ type: 'text', text: step.alsoText });
+    }
     content.push({
       type: 'tool_use',
       id: `scripted-${(toolUseIdCounter += 1)}`,

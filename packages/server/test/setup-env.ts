@@ -13,3 +13,10 @@
 process.env.DATABASE_URL =
   process.env.TEST_DATABASE_URL ?? 'postgres://localhost:5432/summit_air_test';
 process.env.NODE_ENV = 'test';
+
+// Phase 8 transport tests sign fixtures against these — real values are
+// unnecessary (and unavailable pre-Phase-9), so tests never need a real
+// account. `??=` so a real .env value (if ever present) still wins.
+process.env.RETELL_API_KEY ??= 'test-retell-api-key';
+process.env.TWILIO_AUTH_TOKEN ??= 'test-twilio-auth-token';
+process.env.PUBLIC_BASE_URL ??= 'http://localhost:3100';

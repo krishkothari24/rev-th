@@ -1,11 +1,18 @@
 /**
- * Real model provider — wraps one non-streaming `client.messages.create()`
- * call on `config.MODEL_VOICE` (Claude Sonnet 5). Non-streaming is a
- * deliberate Phase 4 choice: there's no telephony audio path yet, so
- * first-token latency doesn't matter the way it will once Retell is in the
- * loop (Phase 8) — a text REPL has no such constraint. No `thinking`/
- * sampling params are set: Sonnet 5 runs adaptive thinking by default and
- * rejects `temperature`/`top_p`/`top_k` outright.
+ * Real model provider — wraps `client.messages.create()`/`.stream()` on
+ * `config.MODEL_VOICE` (Claude Sonnet 5) or `config.MODEL_FAST` (SMS). No
+ * `thinking`/sampling params are set: Sonnet 5 runs adaptive thinking by
+ * default and rejects `temperature`/`top_p`/`top_k` outright.
+ *
+ * Streaming (IMPLEMENTATION_PLAN Phase 8): `send()` only opens a real SSE
+ * stream when a caller passes `onTextDelta` — the Retell WS transport is the
+ * only caller that does, since it needs to forward text as it's generated
+ * rather than wait for the whole turn. Every other caller (SMS, the sim, the
+ * eval harness, every existing test) omits it and gets the original
+ * non-streaming `create()` call, byte-for-byte unchanged. `stream.on('text',
+ * ...)` fires only for text-content-block deltas — the SDK's own
+ * `inputJson`/`thinking` events are distinct and never routed here, so a
+ * tool call's JSON arguments can never leak into a spoken/texted delta.
  *
  * Translates between this file's Anthropic-shaped-but-independent
  * `ContentBlock` union (agent/types.ts) and the real SDK types, so
@@ -19,6 +26,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import type {
   AgentProvider,
   ContentBlock,
+  OnAssistantTextDelta,
   ProviderMessage,
   ProviderRequest,
   ProviderResponse,
@@ -41,8 +49,8 @@ export class AnthropicProvider implements AgentProvider {
     this.model = opts.model;
   }
 
-  async send(request: ProviderRequest): Promise<ProviderResponse> {
-    const response = await this.client.messages.create({
+  async send(request: ProviderRequest, onTextDelta?: OnAssistantTextDelta): Promise<ProviderResponse> {
+    const params = {
       model: this.model,
       max_tokens: MAX_TOKENS,
       system: request.systemPrompt,
@@ -52,15 +60,25 @@ export class AnthropicProvider implements AgentProvider {
         description: tool.description,
         input_schema: tool.input_schema as Anthropic.Tool.InputSchema,
       })),
-    });
-
-    return {
-      content: response.content
-        .map(fromAnthropicBlock)
-        .filter((b): b is ContentBlock => b !== null),
-      stopReason: toProviderStopReason(response.stop_reason),
     };
+
+    if (!onTextDelta) {
+      const response = await this.client.messages.create(params);
+      return toProviderResponse(response);
+    }
+
+    const stream = this.client.messages.stream(params);
+    stream.on('text', (delta) => onTextDelta(delta));
+    const finalMessage = await stream.finalMessage();
+    return toProviderResponse(finalMessage);
   }
+}
+
+function toProviderResponse(message: Anthropic.Message): ProviderResponse {
+  return {
+    content: message.content.map(fromAnthropicBlock).filter((b): b is ContentBlock => b !== null),
+    stopReason: toProviderStopReason(message.stop_reason),
+  };
 }
 
 function toAnthropicMessage(message: ProviderMessage): Anthropic.MessageParam {

@@ -66,3 +66,46 @@ describe('ScriptedProvider', () => {
     await expect(provider.send(emptyRequest)).rejects.toThrow(/empty-script.*exhausted/);
   });
 });
+
+describe('ScriptedProvider — onTextDelta (IMPLEMENTATION_PLAN Phase 8)', () => {
+  it('invokes onTextDelta once with the full text of a text step', async () => {
+    const provider = new ScriptedProvider({
+      name: 'test',
+      steps: [{ type: 'text', text: 'hello there' }],
+    });
+    const deltas: string[] = [];
+    await provider.send(emptyRequest, (d) => deltas.push(d));
+    expect(deltas).toEqual(['hello there']);
+  });
+
+  it('invokes onTextDelta with alsoText for a tool_use step that has it', async () => {
+    const provider = new ScriptedProvider({
+      name: 'test',
+      steps: [
+        { type: 'tool_use', name: 'flag_emergency', input: {}, alsoText: 'Okay, one moment.' },
+      ],
+    });
+    const deltas: string[] = [];
+    await provider.send(emptyRequest, (d) => deltas.push(d));
+    expect(deltas).toEqual(['Okay, one moment.']);
+  });
+
+  it('never invokes onTextDelta for a bare tool_use step with no alsoText', async () => {
+    const provider = new ScriptedProvider({
+      name: 'test',
+      steps: [{ type: 'tool_use', name: 'check_availability', input: {} }],
+    });
+    const deltas: string[] = [];
+    await provider.send(emptyRequest, (d) => deltas.push(d));
+    expect(deltas).toEqual([]);
+  });
+
+  it('omitting onTextDelta produces the exact same response as before', async () => {
+    const provider = new ScriptedProvider({
+      name: 'test',
+      steps: [{ type: 'text', text: 'hello' }],
+    });
+    const res = await provider.send(emptyRequest);
+    expect(res).toEqual({ content: [{ type: 'text', text: 'hello' }], stopReason: 'end_turn' });
+  });
+});

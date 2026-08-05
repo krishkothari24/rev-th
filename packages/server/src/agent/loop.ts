@@ -31,11 +31,13 @@ import { eventBus } from '../events/bus.js';
 import { applyServerOwnedOverrides } from './serverOwnedFields.js';
 import { buildSystemPromptForTurn } from './prompts.js';
 import { hasAlreadyFlagged, isBookingCapExceeded } from './caps.js';
+import type { ClassifyUrgencyResult } from '../triage/classify.js';
 import type {
   AgentProvider,
   ContentBlock,
   ConversationState,
   ExecutedToolCall,
+  OnAssistantTextDelta,
   ProviderRequest,
   TurnResult,
 } from './types.js';
@@ -53,10 +55,39 @@ const SAFETY_DIRECTIVE = (emergencyId: unknown): string =>
   'gas utility or 911 once safely outside. Do not continue with routine booking on this ' +
   'call. Stay on the line, keep them calm, and confirm they are safely out.';
 
+const REMINDER_DIRECTIVE =
+  '[SYSTEM REMINDER — NOT CALLER SPEECH]: The caller has gone quiet. Briefly check in or offer ' +
+  'to continue; do not restate everything already covered.';
+
+/** Used by `runReminderTurn` when a reminder fires before the caller has said
+ * anything yet this conversation (`state.lastTriage` is still null) — a
+ * neutral, non-firing triage so the model-round helper has something to pass
+ * to `applyServerOwnedOverrides` without running a fresh classification (a
+ * reminder carries no new caller speech, so there's nothing to classify). */
+const ROUTINE_NO_OVERRIDE_TRIAGE: ClassifyUrgencyResult = {
+  urgency: 'routine',
+  requiredSkills: [],
+  safetyOverride: { fired: false },
+};
+
+export interface RunTurnOptions {
+  /** Forwarded to the provider on every model round this turn — see
+   * agent/types.ts's `OnAssistantTextDelta` docblock. */
+  onAssistantTextDelta?: OnAssistantTextDelta;
+  /** Fires synchronously the moment the deterministic safety override trips
+   * for this turn — before any model call is made. A transport (the Retell
+   * WS route) uses this to decide, ahead of generation, to route this turn's
+   * deltas as an `agent_interrupt` rather than a normal `response` frame,
+   * rather than only finding out after the whole turn (including
+   * generation) has already completed via `TurnResult.safetyOverrideFired`. */
+  onSafetyOverrideFired?: (reason: EmergencyReason) => void;
+}
+
 export async function runTurn(
   state: ConversationState,
   callerUtterance: string,
   provider: AgentProvider,
+  opts: RunTurnOptions = {},
 ): Promise<TurnResult> {
   const toolCalls: ExecutedToolCall[] = [];
 
@@ -110,6 +141,7 @@ export async function runTurn(
 
   if (triage.safetyOverride.fired && !hasAlreadyFlagged(state)) {
     const reason = triage.safetyOverride.reason;
+    opts.onSafetyOverrideFired?.(reason);
     const dispatchArgs = {
       call_id: state.externalId,
       phone: state.callerPhone,
@@ -136,6 +168,67 @@ export async function runTurn(
     }
   }
 
+  const rounds = await runModelRounds(state, provider, triage, opts);
+  toolCalls.push(...rounds.toolCalls);
+  emergencyFlaggedThisTurn = emergencyFlaggedThisTurn || rounds.emergencyFlaggedThisTurn;
+
+  return {
+    assistantReply: rounds.finalText,
+    toolCalls,
+    safetyOverrideFired,
+    emergencyFlaggedThisTurn,
+  };
+}
+
+/**
+ * Retell's `reminder_required` (the caller has gone quiet) has no new caller
+ * utterance to feed `runTurn` — and must not touch `transcriptAccumulator`,
+ * whose contract (see `ConversationState`) is caller-sourced text only, since
+ * that's what gates the safety override. Injects a system-authored,
+ * non-caller `user`-role message (same pattern as `SAFETY_DIRECTIVE`) and
+ * reuses whatever triage already ran on this conversation rather than
+ * running a fresh `classifyUrgency` — nothing new was said, so there's
+ * nothing new to classify, and no `triage.updated` republish.
+ */
+export async function runReminderTurn(
+  state: ConversationState,
+  provider: AgentProvider,
+  opts: RunTurnOptions = {},
+): Promise<TurnResult> {
+  appendUserText(state, REMINDER_DIRECTIVE);
+  const triage = state.lastTriage ?? ROUTINE_NO_OVERRIDE_TRIAGE;
+  const rounds = await runModelRounds(state, provider, triage, opts);
+  return {
+    assistantReply: rounds.finalText,
+    toolCalls: rounds.toolCalls,
+    safetyOverrideFired: false,
+    emergencyFlaggedThisTurn: rounds.emergencyFlaggedThisTurn,
+  };
+}
+
+interface ModelRoundsResult {
+  finalText: string;
+  toolCalls: ExecutedToolCall[];
+  emergencyFlaggedThisTurn: boolean;
+}
+
+/**
+ * The bounded model round-trip loop (BUILD_GUIDE §5, capped by
+ * `MAX_TOOL_ROUNDS_PER_TURN`) — extracted out of `runTurn` so both it and
+ * `runReminderTurn` share one implementation. Takes the turn's
+ * already-computed `triage` (a reminder reuses the conversation's last real
+ * one rather than classifying anything new) and threads
+ * `opts.onAssistantTextDelta` through every `provider.send()` call this turn
+ * may make — purely additive over the non-streaming path when omitted.
+ */
+async function runModelRounds(
+  state: ConversationState,
+  provider: AgentProvider,
+  triage: ClassifyUrgencyResult,
+  opts: RunTurnOptions,
+): Promise<ModelRoundsResult> {
+  const toolCalls: ExecutedToolCall[] = [];
+  let emergencyFlaggedThisTurn = false;
   let finalText = '';
 
   for (let round = 0; round < MAX_TOOL_ROUNDS_PER_TURN; round += 1) {
@@ -144,7 +237,7 @@ export async function runTurn(
       messages: state.messages,
       tools: getAnthropicToolDefinitions(),
     };
-    const response = await provider.send(request);
+    const response = await provider.send(request, opts.onAssistantTextDelta);
     state.messages.push({ role: 'assistant', content: response.content });
 
     finalText = textOf(response.content) || finalText;
@@ -242,7 +335,7 @@ export async function runTurn(
     }
   }
 
-  return { assistantReply: finalText, toolCalls, safetyOverrideFired, emergencyFlaggedThisTurn };
+  return { finalText, toolCalls, emergencyFlaggedThisTurn };
 }
 
 function appendUserText(state: ConversationState, text: string): void {

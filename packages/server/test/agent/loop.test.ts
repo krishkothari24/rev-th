@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { appointments, emergencyFlags } from '../../src/db/schema.js';
 import { startConversation } from '../../src/agent/context.js';
-import { MAX_TOOL_ROUNDS_PER_TURN, runTurn } from '../../src/agent/loop.js';
+import { MAX_TOOL_ROUNDS_PER_TURN, runReminderTurn, runTurn } from '../../src/agent/loop.js';
 import { MAX_BOOKINGS_PER_CONVERSATION } from '../../src/agent/caps.js';
 import { ScriptedProvider, type ScriptedStep } from '../../src/agent/providers/scripted.js';
 import type { RateLimiter } from '../../src/agent/caps.js';
@@ -311,5 +311,153 @@ describe('runTurn — triage.updated publish (IMPLEMENTATION_PLAN Phase 7)', () 
     expect((published[0] as Extract<DashboardEvent, { type: 'triage.updated' }>).urgency).toBe(
       state.lastTriage?.urgency,
     );
+  });
+});
+
+describe('runTurn — onAssistantTextDelta streaming (IMPLEMENTATION_PLAN Phase 8)', () => {
+  it('produces an identical TurnResult with or without the delta callback', async () => {
+    await resetDb();
+    const scriptFor = (): ScriptedProvider =>
+      new ScriptedProvider({
+        name: 'delta-parity',
+        steps: [{ type: 'text', text: 'Sure thing, one sec.' }],
+      });
+
+    const withoutCallback = await startConversation({
+      channel: 'voice',
+      externalId: 'loop-delta-parity-a',
+      callerPhone: '+17705550166',
+      rateLimiter: alwaysAllow,
+    });
+    const plainResult = await runTurn(withoutCallback, 'hi there', scriptFor());
+
+    const withCallback = await startConversation({
+      channel: 'voice',
+      externalId: 'loop-delta-parity-b',
+      callerPhone: '+17705550166',
+      rateLimiter: alwaysAllow,
+    });
+    const deltas: string[] = [];
+    const streamedResult = await runTurn(withCallback, 'hi there', scriptFor(), {
+      onAssistantTextDelta: (d) => deltas.push(d),
+    });
+
+    expect(streamedResult.assistantReply).toBe(plainResult.assistantReply);
+    expect(streamedResult.safetyOverrideFired).toBe(plainResult.safetyOverrideFired);
+    expect(deltas).toEqual(['Sure thing, one sec.']);
+  });
+});
+
+describe('runTurn — onSafetyOverrideFired (IMPLEMENTATION_PLAN Phase 8)', () => {
+  it('fires with the matched reason on a gas-smell turn, before the turn resolves', async () => {
+    await resetDb();
+    const state = await startConversation({
+      channel: 'voice',
+      externalId: 'loop-safety-callback-fires',
+      callerPhone: '+17705550177',
+      rateLimiter: alwaysAllow,
+    });
+    const provider = new ScriptedProvider({
+      name: 'safety-callback',
+      steps: [{ type: 'text', text: 'okay' }],
+    });
+
+    let firedReason: string | null = null;
+    let firedBeforeSend = false;
+    const result = await runTurn(state, 'I smell gas near the furnace', provider, {
+      onSafetyOverrideFired: (reason) => {
+        firedReason = reason;
+        // The safety block runs to completion (including this callback)
+        // before runModelRounds — and therefore any provider.send — is ever
+        // invoked, so no assistant content should exist in state.messages
+        // yet at the moment this fires.
+        firedBeforeSend = !state.messages.some((m) => m.role === 'assistant');
+      },
+    });
+
+    expect(firedReason).toBe('gas_smell');
+    expect(firedBeforeSend).toBe(true);
+    expect(result.safetyOverrideFired).toBe(true);
+  });
+
+  it('does not fire on a routine, non-hazard turn', async () => {
+    await resetDb();
+    const state = await startConversation({
+      channel: 'voice',
+      externalId: 'loop-safety-callback-no-fire',
+      callerPhone: '+17705550188',
+      rateLimiter: alwaysAllow,
+    });
+    const provider = new ScriptedProvider({
+      name: 'no-safety',
+      steps: [{ type: 'text', text: 'sure, happy to help' }],
+    });
+
+    let fired = false;
+    await runTurn(state, 'just calling to schedule a tune-up', provider, {
+      onSafetyOverrideFired: () => {
+        fired = true;
+      },
+    });
+
+    expect(fired).toBe(false);
+  });
+});
+
+describe('runReminderTurn (IMPLEMENTATION_PLAN Phase 8)', () => {
+  it('injects a system reminder without touching transcriptAccumulator or re-publishing triage.updated', async () => {
+    await resetDb();
+    const state = await startConversation({
+      channel: 'voice',
+      externalId: 'loop-reminder-basic',
+      callerPhone: '+17705550199',
+      rateLimiter: alwaysAllow,
+    });
+    const provider = new ScriptedProvider({
+      name: 'reminder',
+      steps: [
+        { type: 'text', text: 'Sorry to hear that — happy to help.' },
+        { type: 'text', text: 'Just checking in — still there?' },
+      ],
+    });
+
+    await runTurn(state, 'my heat pump stopped working', provider);
+    const accumulatorAfterRealTurn = state.transcriptAccumulator;
+
+    const events: DashboardEvent[] = [];
+    const unsubscribe = eventBus.subscribe((e) => events.push(e));
+    const result = await runReminderTurn(state, provider);
+    unsubscribe();
+
+    expect(state.transcriptAccumulator).toBe(accumulatorAfterRealTurn); // unchanged
+    expect(events.filter((e) => e.type === 'triage.updated')).toHaveLength(0);
+    expect(result.safetyOverrideFired).toBe(false);
+    expect(result.assistantReply).toBe('Just checking in — still there?');
+
+    const lastMessage = state.messages[state.messages.length - 2]; // the injected reminder, before the assistant reply
+    expect(lastMessage?.role).toBe('user');
+    expect(lastMessage?.content[0]).toMatchObject({ type: 'text' });
+    const text = lastMessage?.content[0];
+    expect(text && 'text' in text ? text.text : '').toContain('SYSTEM REMINDER');
+  });
+
+  it('falls back to a neutral non-firing triage when the caller has not spoken yet', async () => {
+    await resetDb();
+    const state = await startConversation({
+      channel: 'voice',
+      externalId: 'loop-reminder-no-prior-turn',
+      callerPhone: '+17705550100',
+      rateLimiter: alwaysAllow,
+    });
+    expect(state.lastTriage).toBeNull();
+
+    const provider = new ScriptedProvider({
+      name: 'reminder-no-prior',
+      steps: [{ type: 'text', text: 'Hello? Still there?' }],
+    });
+
+    const result = await runReminderTurn(state, provider);
+    expect(result.safetyOverrideFired).toBe(false);
+    expect(result.assistantReply).toBe('Hello? Still there?');
   });
 });

@@ -332,3 +332,76 @@ describe('finalizeConversation — outcome derivation', () => {
     expect(published[0]).toMatchObject({ callId: 'ctx-outcome-call-ended', outcome: 'booked' });
   });
 });
+
+describe('finalizeConversation — idempotency (IMPLEMENTATION_PLAN Phase 8)', () => {
+  it('is a no-op the second time it is called on the same state: no second call.ended, endedAt unchanged', async () => {
+    await resetDb();
+    const state = await startConversation({
+      channel: 'voice',
+      externalId: 'ctx-finalize-idempotent',
+      callerPhone: '+17705550100',
+      rateLimiter: alwaysAllow,
+    });
+    await finalizeConversation(state);
+    const [firstRow] = await db
+      .select()
+      .from(conversations)
+      .where(eq(conversations.id, state.conversationDbId));
+
+    const events: DashboardEvent[] = [];
+    const unsubscribe = eventBus.subscribe((e) => events.push(e));
+    await finalizeConversation(state);
+    unsubscribe();
+
+    expect(events.filter((e) => e.type === 'call.ended')).toHaveLength(0);
+    const [secondRow] = await db
+      .select()
+      .from(conversations)
+      .where(eq(conversations.id, state.conversationDbId));
+    expect(secondRow?.endedAt?.getTime()).toBe(firstRow?.endedAt?.getTime());
+  });
+});
+
+describe('finalizeConversation — safety_followup (IMPLEMENTATION_PLAN Phase 8)', () => {
+  it('publishes an sms.queued safety_followup to the caller when the conversation was emergency-flagged', async () => {
+    await resetDb();
+    const state = await startConversation({
+      channel: 'voice',
+      externalId: 'ctx-finalize-safety-followup',
+      callerPhone: '+17705550188',
+      rateLimiter: alwaysAllow,
+    });
+    state.emergencyFlaggedAt = new Date();
+
+    const events: DashboardEvent[] = [];
+    const unsubscribe = eventBus.subscribe((e) => events.push(e));
+    await finalizeConversation(state);
+    unsubscribe();
+
+    const followups = events.filter(
+      (e): e is Extract<DashboardEvent, { type: 'sms.queued' }> =>
+        e.type === 'sms.queued' && e.kind === 'safety_followup',
+    );
+    expect(followups).toHaveLength(1);
+    expect(followups[0]?.to).toBe('+17705550188');
+  });
+
+  it('does not publish a safety_followup for a conversation that was never flagged', async () => {
+    await resetDb();
+    const state = await startConversation({
+      channel: 'voice',
+      externalId: 'ctx-finalize-no-safety-followup',
+      callerPhone: '+17705550199',
+      rateLimiter: alwaysAllow,
+    });
+
+    const events: DashboardEvent[] = [];
+    const unsubscribe = eventBus.subscribe((e) => events.push(e));
+    await finalizeConversation(state);
+    unsubscribe();
+
+    expect(
+      events.filter((e) => e.type === 'sms.queued' && e.kind === 'safety_followup'),
+    ).toHaveLength(0);
+  });
+});

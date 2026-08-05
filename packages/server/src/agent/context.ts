@@ -16,7 +16,7 @@
  * that into a working foreign key from turn one, with no change to
  * runTool.ts itself.
  */
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { conversations } from '../db/schema.js';
 import type { Channel, conversationOutcomeEnum } from '../db/schema.js';
@@ -170,19 +170,48 @@ function deriveOutcome(state: ConversationState): ConversationOutcome {
   return 'info_only';
 }
 
+/**
+ * Idempotent (IMPLEMENTATION_PLAN Phase 8): the Retell WS socket's `close`
+ * handler and a later webhook path, or the SMS inactivity sweeper racing a
+ * just-arrived message, can each plausibly try to finalize the same
+ * conversation. The `endedAt IS NULL` guard means only the first caller's
+ * update actually lands — `.returning()` coming back empty is the signal
+ * this call was a no-op, same idiom `startConversation` already uses for
+ * `call.started`. A second finalize call must not double-publish
+ * `call.ended` or double-queue the safety follow-up text below.
+ */
 export async function finalizeConversation(
   state: ConversationState,
   opts: FinalizeConversationOptions = {},
 ): Promise<void> {
   const outcome = opts.outcome ?? deriveOutcome(state);
-  await db
+  const updated = await db
     .update(conversations)
     .set({
       endedAt: new Date(),
       outcome,
       transcript: state.messages,
     })
-    .where(eq(conversations.id, state.conversationDbId));
+    .where(and(eq(conversations.id, state.conversationDbId), isNull(conversations.endedAt)))
+    .returning({ id: conversations.id });
+
+  if (updated.length === 0) return;
+
+  // The one `sms.queued` kind nothing fired before Phase 8 (BUILD_GUIDE §7:
+  // "customer-facing safety follow-up on emergency, as a backup if the call
+  // drops"). Channel-agnostic and lives here, not in transport code, since
+  // every conversation — voice or SMS — passes through finalizeConversation
+  // exactly once (guarded above).
+  if (state.emergencyFlaggedAt) {
+    eventBus.publish({
+      type: 'sms.queued',
+      kind: 'safety_followup',
+      to: state.callerPhone,
+      body:
+        "Summit Air: if you're still smelling gas or feel unsafe, leave the property now and " +
+        'call 911 or your gas utility. We’ve already notified dispatch.',
+    });
+  }
 
   eventBus.publish({ type: 'call.ended', callId: state.externalId, outcome });
 }

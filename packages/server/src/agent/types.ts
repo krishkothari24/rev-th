@@ -43,8 +43,14 @@ export interface ProviderResponse {
   stopReason: ProviderStopReason;
 }
 
+/** Invoked with each incremental piece of assistant-generated *text* (never
+ * tool-input JSON) as a provider produces it. Purely additive: a caller that
+ * omits it gets today's request/response behavior unchanged — see
+ * agent/providers/anthropic.ts and agent/providers/scripted.ts. */
+export type OnAssistantTextDelta = (delta: string) => void;
+
 export interface AgentProvider {
-  send(request: ProviderRequest): Promise<ProviderResponse>;
+  send(request: ProviderRequest, onTextDelta?: OnAssistantTextDelta): Promise<ProviderResponse>;
 }
 
 export interface ExecutedToolCall {

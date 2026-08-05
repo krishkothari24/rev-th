@@ -15,6 +15,13 @@
       "when": 1785885227016,
       "tag": "0001_giant_mojo",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1785934913161,
+      "tag": "0002_useful_kate_bishop",
+      "breakpoints": true
     }
   ]
 }

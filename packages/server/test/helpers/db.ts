@@ -12,7 +12,7 @@ import { customers, technicians, equipment } from '../../src/db/schema.js';
 
 export async function resetDb(): Promise<void> {
   await db.execute(
-    sql`TRUNCATE TABLE tool_invocations, emergency_flags, conversations, appointments, equipment, customers, technicians RESTART IDENTITY CASCADE`,
+    sql`TRUNCATE TABLE tool_invocations, emergency_flags, conversations, appointments, equipment, customers, technicians, sms_opt_outs RESTART IDENTITY CASCADE`,
   );
 }
 

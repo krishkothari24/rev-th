@@ -1,11 +1,18 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
+import formbody from '@fastify/formbody';
+import websocket from '@fastify/websocket';
 import { config, isProduction, resolveAllowedDashboardOrigins } from './config.js';
 import { registerToolRoutes } from './tools/routes.js';
 import { registerDashboardRoutes } from './dashboard/routes.js';
 import { registerEventsRoute } from './events/sse.js';
 import { registerEventsRelayRoute } from './events/relay.js';
+import { registerSmsOutboundSubscriber } from './sms/outboundSubscriber.js';
+import { registerTwilioSmsRoute } from './transports/twilio/sms.js';
+import { startSmsInactivitySweeper } from './transports/twilio/conversationStore.js';
+import { registerRetellWebhookRoute } from './transports/retell/webhook.js';
+import { registerRetellWebsocketRoute } from './transports/retell/websocket.js';
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
@@ -43,6 +50,12 @@ export async function buildApp(): Promise<FastifyInstance> {
     timeWindow: '1 minute',
   });
 
+  // Twilio POSTs application/x-www-form-urlencoded, not JSON — Fastify has
+  // no built-in parser for that content type.
+  await app.register(formbody);
+
+  await app.register(websocket);
+
   app.get('/health', async () => ({
     status: 'ok',
     service: 'summit-air',
@@ -54,6 +67,19 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(registerDashboardRoutes, { prefix: '/dashboard' });
   await app.register(registerEventsRoute);
   await app.register(registerEventsRelayRoute);
+  await app.register(registerTwilioSmsRoute);
+  await app.register(registerRetellWebhookRoute);
+  await app.register(registerRetellWebsocketRoute);
+
+  // Per-buildApp() registration (several tests call buildApp() more than
+  // once per process), torn down on close — see sms/outboundSubscriber.ts
+  // and transports/twilio/conversationStore.ts.
+  const unsubscribeSmsOutbound = registerSmsOutboundSubscriber();
+  const stopSmsSweeper = startSmsInactivitySweeper();
+  app.addHook('onClose', async () => {
+    unsubscribeSmsOutbound();
+    stopSmsSweeper();
+  });
 
   return app;
 }
