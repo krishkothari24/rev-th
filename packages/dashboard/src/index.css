@@ -1,0 +1,66 @@
+@import 'tailwindcss';
+
+/**
+ * Color tokens — the `dataviz` skill's reference palette (references/palette.md),
+ * used unmodified (no new hues introduced, so no re-validation needed — the
+ * skill ships these pre-validated for CVD/contrast in both modes). Kept as
+ * plain CSS custom properties rather than Tailwind's `@theme` block: `@theme`
+ * has no per-mode branching, and these need one value under
+ * `prefers-color-scheme: dark` and one under light. Referenced from
+ * components via Tailwind's arbitrary-value syntax, e.g. `bg-[var(--surface-1)]`.
+ *
+ * Status colors (good/warning/serious/critical) are reserved for state, never
+ * reused as a categorical color, and always paired with an icon/label in the
+ * components that use them — never color alone (palette.md's status-palette
+ * contrast note: warning/serious are sub-3:1 on the light surface by design).
+ */
+:root {
+  color-scheme: light;
+  --surface-1: #fcfcfb;
+  --surface-page: #f9f9f7;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #898781;
+  --gridline: #e1e0d9;
+  --border: rgba(11, 11, 11, 0.1);
+
+  --status-good: #0ca30c;
+  --status-warning: #fab219;
+  --status-serious: #ec835a;
+  --status-critical: #d03b3b;
+
+  /* Sequential blue — magnitude only (capacity meter), never a status. */
+  --sequential-fill: #2a78d6;
+  --sequential-track: rgb(42 120 214 / 15%);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --surface-1: #1a1a19;
+    --surface-page: #0d0d0d;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted: #898781;
+    --gridline: #2c2c2a;
+    --border: rgba(255, 255, 255, 0.1);
+
+    --status-good: #0ca30c;
+    --status-warning: #fab219;
+    --status-serious: #ec835a;
+    --status-critical: #e66767;
+
+    --sequential-fill: #3987e5;
+    --sequential-track: rgb(57 135 229 / 18%);
+  }
+}
+
+body {
+  background: var(--surface-page);
+  color: var(--text-primary);
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
+}

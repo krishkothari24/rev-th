@@ -1,8 +1,11 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
-import { config, isProduction } from './config.js';
+import { config, isProduction, resolveAllowedDashboardOrigins } from './config.js';
 import { registerToolRoutes } from './tools/routes.js';
+import { registerDashboardRoutes } from './dashboard/routes.js';
+import { registerEventsRoute } from './events/sse.js';
+import { registerEventsRelayRoute } from './events/relay.js';
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
@@ -30,7 +33,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   });
 
   await app.register(cors, {
-    origin: config.DASHBOARD_ORIGIN === '*' ? true : config.DASHBOARD_ORIGIN.split(','),
+    origin: resolveAllowedDashboardOrigins(),
     credentials: true,
   });
 
@@ -48,6 +51,9 @@ export async function buildApp(): Promise<FastifyInstance> {
   }));
 
   await app.register(registerToolRoutes, { prefix: '/tools' });
+  await app.register(registerDashboardRoutes, { prefix: '/dashboard' });
+  await app.register(registerEventsRoute);
+  await app.register(registerEventsRelayRoute);
 
   return app;
 }

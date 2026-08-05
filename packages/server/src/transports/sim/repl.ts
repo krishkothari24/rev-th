@@ -14,6 +14,13 @@
  * with `.question()`, which conflicts with it and silently drops lines) —
  * the first line is treated as the caller's phone number, every line after
  * that is a caller turn.
+ *
+ * Also best-effort relays its own dashboard events to a `npm run dev` server
+ * if one happens to be running (`relayDashboardEvent` -> events/relay.ts) —
+ * this process's `eventBus` is its own in-memory instance, separate from the
+ * server's, so that's the only way a sim booking lands on the dashboard live
+ * (IMPLEMENTATION_PLAN Phase 7's own done-when criterion) rather than only
+ * on the next manual refresh.
  */
 import readline from 'node:readline';
 import { config, requireEnv } from '../../config.js';
@@ -60,6 +67,24 @@ function printDashboardEvent(event: DashboardEvent): void {
   console.log(`[event] ${scrubFreeText(JSON.stringify(event))}`);
 }
 
+/**
+ * Best-effort bridge to a `npm run dev` server that may or may not be
+ * running (events/relay.ts has the full rationale: this process and that
+ * one have separate in-memory event buses). Fire-and-forget — a missing or
+ * unreachable server must never slow down or break the REPL, which has to
+ * keep working standalone with zero dependencies for fast iteration.
+ */
+function relayDashboardEvent(event: DashboardEvent): void {
+  fetch(`http://localhost:${config.PORT}/events/relay`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(event),
+  }).catch(() => {
+    // No dashboard server listening, or it's unreachable — fine, the sim
+    // works standalone. Nothing to report.
+  });
+}
+
 function buildProvider(): AgentProvider {
   if (LIVE_MODE) {
     const apiKey = requireEnv('ANTHROPIC_API_KEY');
@@ -97,7 +122,12 @@ async function main(): Promise<void> {
       }
       const externalId = `sim-${Date.now()}`;
       state = await startConversation({ channel: 'voice', externalId, callerPhone: parsed.data });
-      unsubscribeEvents = eventBus.subscribe(printDashboardEvent);
+      const unsubscribePrint = eventBus.subscribe(printDashboardEvent);
+      const unsubscribeRelay = eventBus.subscribe(relayDashboardEvent);
+      unsubscribeEvents = () => {
+        unsubscribePrint();
+        unsubscribeRelay();
+      };
       console.log(
         `\nConversation started (externalId=${externalId}). Type 'bye' or Ctrl+D to hang up.\n`,
       );

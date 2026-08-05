@@ -10,6 +10,7 @@ import {
 } from '../../src/agent/context.js';
 import type { RateLimiter } from '../../src/agent/caps.js';
 import { disabledHazardCheckProvider } from '../../src/triage/hazardCheck.js';
+import { eventBus, type DashboardEvent } from '../../src/events/bus.js';
 import { resetDb } from '../helpers/db.js';
 
 // The production default rate limiter is a module-level singleton shared
@@ -93,6 +94,50 @@ describe('startConversation', () => {
     expect(state.customerLookupAttempted).toBe(false);
     expect(state.recognizedCustomerSummary).toBeNull();
     expect(state.knownMembershipTier).toBeNull();
+  });
+
+  it('publishes call.started exactly once for a genuinely new externalId (IMPLEMENTATION_PLAN Phase 7)', async () => {
+    await resetDb();
+    const events: DashboardEvent[] = [];
+    const unsubscribe = eventBus.subscribe((e) => events.push(e));
+
+    await startConversation({
+      channel: 'voice',
+      externalId: 'ctx-test-call-started',
+      callerPhone: '+17705550100',
+      rateLimiter: alwaysAllow,
+    });
+    unsubscribe();
+
+    const published = events.filter((e) => e.type === 'call.started');
+    expect(published).toHaveLength(1);
+    expect(published[0]).toMatchObject({
+      callId: 'ctx-test-call-started',
+      channel: 'voice',
+      callerPhone: '+17705550100',
+    });
+  });
+
+  it('does not re-publish call.started on a retried/duplicate call-start', async () => {
+    await resetDb();
+    await startConversation({
+      channel: 'voice',
+      externalId: 'ctx-test-call-started-retry',
+      callerPhone: '+17705550100',
+      rateLimiter: alwaysAllow,
+    });
+
+    const events: DashboardEvent[] = [];
+    const unsubscribe = eventBus.subscribe((e) => events.push(e));
+    await startConversation({
+      channel: 'voice',
+      externalId: 'ctx-test-call-started-retry',
+      callerPhone: '+17705550100',
+      rateLimiter: alwaysAllow,
+    });
+    unsubscribe();
+
+    expect(events.filter((e) => e.type === 'call.started')).toHaveLength(0);
   });
 
   it('rejects when the injected rate limiter denies the phone number', async () => {
@@ -265,5 +310,25 @@ describe('finalizeConversation — outcome derivation', () => {
       .from(conversations)
       .where(eq(conversations.id, state.conversationDbId));
     expect(row?.transcript).toEqual(state.messages);
+  });
+
+  it('publishes call.ended with the derived outcome (IMPLEMENTATION_PLAN Phase 7)', async () => {
+    await resetDb();
+    const state = await startConversation({
+      channel: 'voice',
+      externalId: 'ctx-outcome-call-ended',
+      callerPhone: '+17705550100',
+      rateLimiter: alwaysAllow,
+    });
+    state.bookingsCount = 1;
+
+    const events: DashboardEvent[] = [];
+    const unsubscribe = eventBus.subscribe((e) => events.push(e));
+    await finalizeConversation(state);
+    unsubscribe();
+
+    const published = events.filter((e) => e.type === 'call.ended');
+    expect(published).toHaveLength(1);
+    expect(published[0]).toMatchObject({ callId: 'ctx-outcome-call-ended', outcome: 'booked' });
   });
 });

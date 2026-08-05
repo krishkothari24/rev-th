@@ -11,6 +11,7 @@ import {
   routineBookingCallerTurns,
   routineBookingDemoScript,
 } from '../../src/transports/sim/demoScript.js';
+import { eventBus, type DashboardEvent } from '../../src/events/bus.js';
 import { resetDb, seedFixtures } from '../helpers/db.js';
 
 const alwaysAllow: RateLimiter = { checkAndRecord: () => ({ allowed: true }) };
@@ -282,5 +283,33 @@ describe('runTurn — already-flagged short-circuit', () => {
       .from(emergencyFlags)
       .where(eq(emergencyFlags.callId, state.externalId));
     expect(rows).toHaveLength(0); // the interception never reached dispatchTool this turn
+  });
+});
+
+describe('runTurn — triage.updated publish (IMPLEMENTATION_PLAN Phase 7)', () => {
+  it('publishes triage.updated with the urgency the loop just classified', async () => {
+    await resetDb();
+    const state = await startConversation({
+      channel: 'voice',
+      externalId: 'loop-triage-event',
+      callerPhone: '+17705550155',
+      rateLimiter: alwaysAllow,
+    });
+    const provider = new ScriptedProvider({
+      name: 'triage-event',
+      steps: [{ type: 'text', text: 'Sorry to hear that — let’s get someone out.' }],
+    });
+
+    const events: DashboardEvent[] = [];
+    const unsubscribe = eventBus.subscribe((e) => events.push(e));
+    await runTurn(state, 'my furnace is dead and it is freezing, no heat at all', provider);
+    unsubscribe();
+
+    const published = events.filter((e) => e.type === 'triage.updated');
+    expect(published).toHaveLength(1);
+    expect(published[0]).toMatchObject({ callId: 'loop-triage-event' });
+    expect((published[0] as Extract<DashboardEvent, { type: 'triage.updated' }>).urgency).toBe(
+      state.lastTriage?.urgency,
+    );
   });
 });

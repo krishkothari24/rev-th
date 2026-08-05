@@ -16,12 +16,18 @@
  *
  * This is what makes the sabotage test (test/agent/sabotage.test.ts) a real
  * proof: step 3 does not depend on the model reading or obeying anything.
+ *
+ * Step 2 also publishes `triage.updated` on the event bus every turn — the
+ * dashboard's live-call banner (IMPLEMENTATION_PLAN Phase 7) reads urgency
+ * off this, not off any model output, same trust boundary as everything else
+ * triage decides.
  */
 import { classifyUrgency } from '../triage/classify.js';
 import { detectVulnerablePerson } from '../triage/vulnerability.js';
 import { dispatchTool, getAnthropicToolDefinitions } from '../tools/registry.js';
 import { emergencyReasonEnum, type EmergencyReason } from '../db/schema.js';
 import { isCounty } from '../domain/constants.js';
+import { eventBus } from '../events/bus.js';
 import { applyServerOwnedOverrides } from './serverOwnedFields.js';
 import { buildSystemPromptForTurn } from './prompts.js';
 import { hasAlreadyFlagged, isBookingCapExceeded } from './caps.js';
@@ -92,6 +98,12 @@ export async function runTurn(
     { hazardCheckProvider: state.hazardCheckProvider },
   );
   state.lastTriage = triage;
+  eventBus.publish({
+    type: 'triage.updated',
+    callId: state.externalId,
+    urgency: triage.urgency,
+    requiredSkills: triage.requiredSkills,
+  });
 
   const safetyOverrideFired = triage.safetyOverride.fired;
   let emergencyFlaggedThisTurn = false;

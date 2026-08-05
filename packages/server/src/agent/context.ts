@@ -24,6 +24,7 @@ import { config } from '../config.js';
 import { resolveSeason } from '../domain/season.js';
 import { disabledHazardCheckProvider, type HazardCheckProvider } from '../triage/hazardCheck.js';
 import { AnthropicHazardCheckProvider } from '../triage/hazardCheckAnthropic.js';
+import { eventBus } from '../events/bus.js';
 import { createInMemoryPhoneRateLimiter, type RateLimiter } from './caps.js';
 import type { ConversationState } from './types.js';
 
@@ -85,19 +86,34 @@ export async function startConversation(
   // onConflictDoNothing makes this idempotent against a retried call-start
   // for the same externalId (Retell retries on timeout, same as every tool
   // call) — the row is created at most once regardless of how many times
-  // this is invoked for the same conversation.
-  await db
+  // this is invoked for the same conversation. `.returning()` on an
+  // onConflictDoNothing insert comes back empty on the no-op branch, which
+  // is exactly the signal used below to decide whether this is a genuinely
+  // new call (publish `call.started`) or a retry (must not re-open the
+  // dashboard's live-call banner a second time).
+  const inserted = await db
     .insert(conversations)
     .values({ channel: opts.channel, externalId: opts.externalId })
     .onConflictDoNothing({
       target: conversations.externalId,
-    });
+    })
+    .returning({ id: conversations.id });
 
-  const [row] = await db
-    .select({ id: conversations.id })
-    .from(conversations)
-    .where(eq(conversations.externalId, opts.externalId))
-    .limit(1);
+  let row = inserted[0];
+  if (row) {
+    eventBus.publish({
+      type: 'call.started',
+      callId: opts.externalId,
+      channel: opts.channel,
+      callerPhone: opts.callerPhone,
+    });
+  } else {
+    [row] = await db
+      .select({ id: conversations.id })
+      .from(conversations)
+      .where(eq(conversations.externalId, opts.externalId))
+      .limit(1);
+  }
   if (!row)
     throw new Error(
       'conversation row missing immediately after insert — this should be unreachable',
@@ -158,12 +174,15 @@ export async function finalizeConversation(
   state: ConversationState,
   opts: FinalizeConversationOptions = {},
 ): Promise<void> {
+  const outcome = opts.outcome ?? deriveOutcome(state);
   await db
     .update(conversations)
     .set({
       endedAt: new Date(),
-      outcome: opts.outcome ?? deriveOutcome(state),
+      outcome,
       transcript: state.messages,
     })
     .where(eq(conversations.id, state.conversationDbId));
+
+  eventBus.publish({ type: 'call.ended', callId: state.externalId, outcome });
 }

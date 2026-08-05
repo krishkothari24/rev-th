@@ -74,3 +74,15 @@ export function requireEnv(key: keyof z.infer<typeof schema>): string {
   }
   return value;
 }
+
+/**
+ * The same origin-list parsing `app.ts` hands to `@fastify/cors`. Also
+ * needed by `events/sse.ts`: `reply.hijack()` (required for a long-lived SSE
+ * response written straight to `reply.raw`) bypasses the cors plugin's own
+ * onSend hook entirely, so that route has to replicate this check by hand
+ * rather than getting `Access-Control-Allow-Origin` for free like every
+ * other route.
+ */
+export function resolveAllowedDashboardOrigins(): string[] | true {
+  return config.DASHBOARD_ORIGIN === '*' ? true : config.DASHBOARD_ORIGIN.split(',');
+}
