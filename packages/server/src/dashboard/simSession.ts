@@ -39,27 +39,32 @@ const SESSION_IDLE_MS = 30 * 60 * 1000;
 
 const sessions = new Map<string, SimSession>();
 
+export type SimChannel = 'voice' | 'sms';
+
 /** Test/production seam, same idiom as `conversationStore.ts`'s
  * `providerFactory` param — production always gets a real `AnthropicProvider`
- * on the same model a real voice call would use. Throws with a clear message
- * if `ANTHROPIC_API_KEY` isn't set yet; the route layer turns that into a
- * clean 503 rather than a 500. */
-function defaultProviderFactory(): AgentProvider {
+ * on the same model the matching real channel would use: `MODEL_VOICE` for a
+ * simulated call, `MODEL_FAST` (Haiku) for a simulated text, mirroring
+ * `transports/twilio/sms.ts`'s `defaultSmsProviderFactory`. Throws with a
+ * clear message if `ANTHROPIC_API_KEY` isn't set yet; the route layer turns
+ * that into a clean 503 rather than a 500. */
+function defaultProviderFactory(channel: SimChannel): AgentProvider {
   return new AnthropicProvider({
     apiKey: requireEnv('ANTHROPIC_API_KEY'),
-    model: config.MODEL_VOICE,
+    model: channel === 'sms' ? config.MODEL_FAST : config.MODEL_VOICE,
   });
 }
 
 export async function startSimSession(
   callerPhone: string,
-  providerFactory: () => AgentProvider = defaultProviderFactory,
+  channel: SimChannel = 'voice',
+  providerFactory: (channel: SimChannel) => AgentProvider = defaultProviderFactory,
 ): Promise<{ externalId: string }> {
   const externalId = `dash-sim-${randomUUID()}`;
   // Constructed before startConversation so a missing API key fails fast,
   // before a conversations row (and a call.started event) exists for it.
-  const provider = providerFactory();
-  const state = await startConversation({ channel: 'voice', externalId, callerPhone });
+  const provider = providerFactory(channel);
+  const state = await startConversation({ channel, externalId, callerPhone });
   sessions.set(externalId, { state, provider, lastActivityAt: Date.now() });
   return { externalId };
 }

@@ -22,7 +22,10 @@ const acknowledgeParamsSchema = z.object({
   id: z.string().uuid(),
 });
 
-const simStartBodySchema = z.object({ callerPhone: phoneSchema });
+const simStartBodySchema = z.object({
+  callerPhone: phoneSchema,
+  channel: z.enum(['voice', 'sms']).optional().default('voice'),
+});
 const simTurnBodySchema = z.object({
   externalId: z.string().min(1),
   message: z.string().trim().min(1).max(2000),
@@ -61,7 +64,12 @@ async function handleAcknowledge(req: FastifyRequest, reply: FastifyReply): Prom
  * a thin HTTP wrapper around dashboard/simSession.ts, itself a wrapper
  * around the exact loop transports/sim/repl.ts drives from a terminal — see
  * that file's docblock for why this is safe to add with no new business
- * logic. `startSimSession` throws a clear "ANTHROPIC_API_KEY is not set"
+ * logic. `channel` picks which real transport this session stands in for —
+ * `voice` (default) loads `agent_system_prompt.md` on `MODEL_VOICE`, `sms`
+ * loads `sms_agent_prompt.md` on `MODEL_FAST`, matching
+ * `transports/twilio/sms.ts`'s own model choice — so an SMS demo run here is
+ * the real SMS prompt/model, not the voice one in a text box.
+ * `startSimSession` throws a clear "ANTHROPIC_API_KEY is not set"
  * error via `requireEnv` when the key isn't configured yet; surfaced here as
  * 503 rather than a bare 500, since "not configured yet" is expected before
  * Phase 9's account setup, not a bug.
@@ -75,7 +83,7 @@ async function handleSimStart(req: FastifyRequest, reply: FastifyReply): Promise
     });
   }
   try {
-    const result = await startSimSession(parsed.data.callerPhone);
+    const result = await startSimSession(parsed.data.callerPhone, parsed.data.channel);
     return reply.send(result);
   } catch (err) {
     req.log.warn({ err }, 'dashboard sim: could not start session');

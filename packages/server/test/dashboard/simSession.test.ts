@@ -12,7 +12,7 @@ import { ScriptedProvider } from '../../src/agent/providers/scripted.js';
 import type { AgentProvider } from '../../src/agent/types.js';
 import { resetDb } from '../helpers/db.js';
 
-function fakeProviderFactory(): () => AgentProvider {
+function fakeProviderFactory(): (channel: 'voice' | 'sms') => AgentProvider {
   return () =>
     new ScriptedProvider({
       name: 'sim-session-test',
@@ -27,7 +27,7 @@ describe('dashboard sim session', () => {
 
   it('starts a session, creates a conversations row, and returns a fresh externalId', async () => {
     await resetDb();
-    const { externalId } = await startSimSession('+17705550301', fakeProviderFactory());
+    const { externalId } = await startSimSession('+17705550301', 'voice', fakeProviderFactory());
     expect(externalId).toMatch(/^dash-sim-/);
 
     const [row] = await db
@@ -39,7 +39,7 @@ describe('dashboard sim session', () => {
 
   it('runs a turn against the session and returns the assistant reply', async () => {
     await resetDb();
-    const { externalId } = await startSimSession('+17705550302', fakeProviderFactory());
+    const { externalId } = await startSimSession('+17705550302', 'voice', fakeProviderFactory());
     const result = await runSimTurn(externalId, 'Hi, my AC is out.');
     expect(result?.assistantReply).toBe('Got it, thanks.');
     // The loop auto-fires a call-start customer_lookup on turn one (Phase 6)
@@ -57,7 +57,7 @@ describe('dashboard sim session', () => {
 
   it('ends a session, finalizing the conversation row', async () => {
     await resetDb();
-    const { externalId } = await startSimSession('+17705550303', fakeProviderFactory());
+    const { externalId } = await startSimSession('+17705550303', 'voice', fakeProviderFactory());
     const ended = await endSimSession(externalId);
     expect(ended).toBe(true);
 
@@ -70,7 +70,7 @@ describe('dashboard sim session', () => {
 
   it('returns false ending an already-ended or unknown session', async () => {
     await resetDb();
-    const { externalId } = await startSimSession('+17705550304', fakeProviderFactory());
+    const { externalId } = await startSimSession('+17705550304', 'voice', fakeProviderFactory());
     await endSimSession(externalId);
     expect(await endSimSession(externalId)).toBe(false);
     expect(await endSimSession('never-existed')).toBe(false);
@@ -79,7 +79,7 @@ describe('dashboard sim session', () => {
   it('propagates a providerFactory failure (e.g. missing API key) without creating a session', async () => {
     await resetDb();
     await expect(
-      startSimSession('+17705550305', () => {
+      startSimSession('+17705550305', 'voice', () => {
         throw new Error('ANTHROPIC_API_KEY is not set');
       }),
     ).rejects.toThrow(/ANTHROPIC_API_KEY/);

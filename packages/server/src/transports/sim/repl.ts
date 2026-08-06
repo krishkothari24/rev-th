@@ -35,6 +35,13 @@ import { redactAddress, redactPhone, scrubFreeText } from '../../lib/redact.js';
 import type { AgentProvider, ConversationState, ExecutedToolCall } from '../../agent/types.js';
 
 const LIVE_MODE = process.argv.includes('--live');
+// Defaults to the voice channel/prompt/model. `--sms` switches to the
+// sms_agent_prompt.md + MODEL_FAST (Haiku) pairing transports/twilio/sms.ts
+// actually uses — without this the REPL can only ever exercise the voice
+// prompt, even though the whole point of the shared loop is that both
+// channels run through it (BUILD_GUIDE §1).
+const SMS_MODE = process.argv.includes('--sms');
+const CHANNEL = SMS_MODE ? 'sms' : 'voice';
 const EXIT_WORDS = /^(bye|quit|exit)$/i;
 
 /** Redacts known-PII fields by name, and last-resort scrubs everything else,
@@ -88,8 +95,11 @@ function relayDashboardEvent(event: DashboardEvent): void {
 function buildProvider(): AgentProvider {
   if (LIVE_MODE) {
     const apiKey = requireEnv('ANTHROPIC_API_KEY');
-    console.log(`Live mode — talking to ${config.MODEL_VOICE}. Free text works.\n`);
-    return new AnthropicProvider({ apiKey, model: config.MODEL_VOICE });
+    const model = SMS_MODE ? config.MODEL_FAST : config.MODEL_VOICE;
+    console.log(
+      `Live mode — talking to ${model} on the ${CHANNEL} prompt. Free text works.\n`,
+    );
+    return new AnthropicProvider({ apiKey, model });
   }
 
   console.log(
@@ -121,7 +131,7 @@ async function main(): Promise<void> {
         continue;
       }
       const externalId = `sim-${Date.now()}`;
-      state = await startConversation({ channel: 'voice', externalId, callerPhone: parsed.data });
+      state = await startConversation({ channel: CHANNEL, externalId, callerPhone: parsed.data });
       const unsubscribePrint = eventBus.subscribe(printDashboardEvent);
       const unsubscribeRelay = eventBus.subscribe(relayDashboardEvent);
       unsubscribeEvents = () => {

@@ -1,5 +1,12 @@
 import { useCallback, useRef, useState } from 'react';
-import { SimApiError, endSimCall, sendSimTurn, startSimCall, type SimToolCall } from '../lib/simApi';
+import {
+  SimApiError,
+  endSimCall,
+  sendSimTurn,
+  startSimCall,
+  type SimChannel,
+  type SimToolCall,
+} from '../lib/simApi';
 
 type SimEntry =
   | { kind: 'caller'; id: string; text: string }
@@ -52,6 +59,7 @@ function describeToolCall(call: SimToolCall): string {
 export function SimPanel() {
   const [isOpen, setIsOpen] = useState(false);
   const [phone, setPhone] = useState('+17705559999');
+  const [channel, setChannel] = useState<SimChannel>('voice');
   const [externalId, setExternalId] = useState<string | null>(null);
   const [entries, setEntries] = useState<SimEntry[]>([]);
   const [draft, setDraft] = useState('');
@@ -72,10 +80,14 @@ export function SimPanel() {
     setError(null);
     setStarting(true);
     try {
-      const { externalId: id } = await startSimCall(phone);
+      const { externalId: id } = await startSimCall(phone, channel);
       setExternalId(id);
       setEntries([
-        { kind: 'system', id: newId(), text: `Test call started — externalId ${id}.` },
+        {
+          kind: 'system',
+          id: newId(),
+          text: `Test ${channel === 'sms' ? 'text' : 'call'} started — externalId ${id}.`,
+        },
       ]);
       scrollToBottom();
     } catch (err) {
@@ -87,7 +99,7 @@ export function SimPanel() {
     } finally {
       setStarting(false);
     }
-  }, [phone, scrollToBottom]);
+  }, [phone, channel, scrollToBottom]);
 
   const handleSend = useCallback(async () => {
     const message = draft.trim();
@@ -147,9 +159,11 @@ export function SimPanel() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-2 border-b border-[var(--border)] px-4 py-3">
-              <h2 className="text-sm font-semibold text-[var(--text-primary)]">Test call</h2>
+              <h2 className="text-sm font-semibold text-[var(--text-primary)]">
+                Test {channel === 'sms' ? 'text' : 'call'}
+              </h2>
               <span className="text-xs text-[var(--text-muted)]">
-                drives the real loop — no telephony needed
+                drives the real {channel === 'sms' ? 'SMS' : 'voice'} prompt/model — no telephony needed
               </span>
               <button
                 type="button"
@@ -163,6 +177,23 @@ export function SimPanel() {
 
             {!externalId ? (
               <div className="flex flex-col gap-3 p-4">
+                <span className="text-xs text-[var(--text-secondary)]">Channel</span>
+                <div className="flex gap-1.5">
+                  {(['voice', 'sms'] as const).map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setChannel(c)}
+                      className={`rounded-md border px-2.5 py-1 text-xs font-medium ${
+                        channel === c
+                          ? 'border-[var(--sequential-fill)] bg-[var(--sequential-fill)] text-white'
+                          : 'border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                      }`}
+                    >
+                      {c === 'voice' ? 'Voice (Realtime prompt)' : 'SMS (Haiku prompt)'}
+                    </button>
+                  ))}
+                </div>
                 <label className="text-xs text-[var(--text-secondary)]" htmlFor="sim-phone">
                   Caller phone (E.164) — use a seeded number to demo recognition
                 </label>
@@ -179,7 +210,7 @@ export function SimPanel() {
                   disabled={starting}
                   className="rounded-md bg-[var(--sequential-fill)] px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60"
                 >
-                  {starting ? 'Starting…' : 'Start test call'}
+                  {starting ? 'Starting…' : `Start test ${channel === 'sms' ? 'text' : 'call'}`}
                 </button>
                 {error && (
                   <p className="text-sm" style={{ color: 'var(--status-serious)' }}>

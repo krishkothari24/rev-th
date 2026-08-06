@@ -36,11 +36,16 @@ async function parseErrorBody(res: Response): Promise<string> {
   }
 }
 
-export async function startSimCall(callerPhone: string): Promise<{ externalId: string }> {
+export type SimChannel = 'voice' | 'sms';
+
+export async function startSimCall(
+  callerPhone: string,
+  channel: SimChannel = 'voice',
+): Promise<{ externalId: string }> {
   const res = await fetch(`${BASE_URL}/dashboard/sim/start`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ callerPhone }),
+    body: JSON.stringify({ callerPhone, channel }),
   });
   if (!res.ok) throw new SimApiError(await parseErrorBody(res), res.status);
   return (await res.json()) as { externalId: string };
