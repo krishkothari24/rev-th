@@ -28,3 +28,14 @@ process.env.PUBLIC_BASE_URL ??= 'http://localhost:3100';
 // real code path rather than an empty/garbage key.
 process.env.OPENAI_API_KEY ??= 'test-openai-api-key';
 process.env.OPENAI_WEBHOOK_SECRET ??= 'whsec_dGVzdC1vcGVuYWktd2ViaG9vay1zZWNyZXQ=';
+
+// Phase 9a added dashboard basic-auth, gated on both vars being set
+// (dashboard/basicAuth.ts). dotenv.config() (called from config.ts on
+// import) picks up a real developer .env unless we blank these first —
+// without this, running the suite locally with real Railway/dashboard
+// creds in .env silently turns on auth mid-run and 401s every
+// dashboard/SSE test that (correctly, for its own scope) doesn't send
+// credentials. The auth gate itself is exercised live against the
+// deployed instance, not by this suite.
+process.env.DASHBOARD_BASIC_AUTH_USER = '';
+process.env.DASHBOARD_BASIC_AUTH_PASS = '';

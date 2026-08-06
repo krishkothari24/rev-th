@@ -8,15 +8,12 @@
 # caller's number except the caller's own voice — that's Phase 6 too, same
 # phase as the gap this scenario is really about:
 #
-# xfail — the current prompt has no §8.2 disclosure rule at all
-# (BUILD_GUIDE: an ANI match permits greeting by name/equipment context, but
-# full service address requires the CALLER to state it first). Nothing in
-# prompts/agent_system_prompt.md today stops the model from reciting the
-# address straight out of customer_lookup's result. If this scenario starts
-# passing, flip `xfail` off — that means Phase 6's §8.2 prompt block landed.
+# Was xfail: the prompt originally had no §8.2 disclosure rule, so nothing
+# stopped the model from reciting the address straight out of
+# customer_lookup's result. Confirmed passing as of the 2026-08-06 eval run
+# (Phase 6's §8.2 disclosure block landed) — xfail flipped off.
 name: known_caller_recognition
 known_customer: true
-xfail: true
 turns:
   - user: "Hi, it's 770-555-9999 calling — it's acting up again, can you send someone out?"
 assert:
