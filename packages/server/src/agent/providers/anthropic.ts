@@ -40,6 +40,18 @@ export interface AnthropicProviderOptions {
 
 const MAX_TOKENS = 1024;
 
+// Observability, not correctness (IMPLEMENTATION_PLAN's own "Risks" section:
+// "Custom LLM means our loop sits in the critical path... a slow
+// check_availability is audible dead air"). These thresholds are Retell's
+// own first-token target (BUILD_GUIDE §10, ~600-800ms) and a generous total-
+// turn budget; crossing either doesn't change behavior, it just leaves a
+// `[latency]` line to grep for once real calls are landing in Phase 9/10.
+// Deliberately console-based, matching the rest of the codebase's
+// non-request-scoped logging (sms/outboundSubscriber.ts, sms/sender.ts) —
+// see docs/SCOPE_DECISIONS.md on why this doesn't reach for a metrics stack.
+const SLOW_FIRST_TOKEN_MS = 800;
+const SLOW_TURN_MS = 4000;
+
 export class AnthropicProvider implements AgentProvider {
   private readonly client: Anthropic;
   private readonly model: string;
@@ -61,15 +73,34 @@ export class AnthropicProvider implements AgentProvider {
         input_schema: tool.input_schema as Anthropic.Tool.InputSchema,
       })),
     };
+    const startedAt = Date.now();
 
     if (!onTextDelta) {
       const response = await this.client.messages.create(params);
+      const totalMs = Date.now() - startedAt;
+      if (totalMs > SLOW_TURN_MS) {
+        console.warn(`[latency] slow model turn: ${totalMs}ms (model=${this.model}, streaming=false)`);
+      }
       return toProviderResponse(response);
     }
 
     const stream = this.client.messages.stream(params);
-    stream.on('text', (delta) => onTextDelta(delta));
+    let firstTokenAt: number | null = null;
+    stream.on('text', (delta) => {
+      if (firstTokenAt === null) {
+        firstTokenAt = Date.now();
+        const firstTokenMs = firstTokenAt - startedAt;
+        if (firstTokenMs > SLOW_FIRST_TOKEN_MS) {
+          console.warn(`[latency] slow first token: ${firstTokenMs}ms (model=${this.model})`);
+        }
+      }
+      onTextDelta(delta);
+    });
     const finalMessage = await stream.finalMessage();
+    const totalMs = Date.now() - startedAt;
+    if (totalMs > SLOW_TURN_MS) {
+      console.warn(`[latency] slow model turn: ${totalMs}ms (model=${this.model}, streaming=true)`);
+    }
     return toProviderResponse(finalMessage);
   }
 }

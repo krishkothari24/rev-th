@@ -279,6 +279,82 @@ describe('finalizeConversation — outcome derivation', () => {
     expect(row?.outcome).toBe('info_only');
   });
 
+  it('derives "abandoned" for a voice call with 2+ caller turns and no terminal outcome', async () => {
+    await resetDb();
+    const state = await startConversation({
+      channel: 'voice',
+      externalId: 'ctx-outcome-abandoned-turns',
+      callerPhone: '+17705550100',
+      rateLimiter: alwaysAllow,
+    });
+    state.messages = [
+      { role: 'user', content: [{ type: 'text', text: 'Hi, my AC is out' }] },
+      { role: 'assistant', content: [{ type: 'text', text: 'Sorry to hear that — what county?' }] },
+      { role: 'user', content: [{ type: 'text', text: 'Cobb, and my address is' }] },
+    ];
+    await finalizeConversation(state);
+    const [row] = await db
+      .select()
+      .from(conversations)
+      .where(eq(conversations.id, state.conversationDbId));
+    expect(row?.outcome).toBe('abandoned');
+  });
+
+  it('derives "abandoned" for a recognized caller (known name) even with few turns', async () => {
+    await resetDb();
+    const state = await startConversation({
+      channel: 'voice',
+      externalId: 'ctx-outcome-abandoned-known',
+      callerPhone: '+17705550100',
+      rateLimiter: alwaysAllow,
+    });
+    state.knownName = 'Maria Delgado';
+    await finalizeConversation(state);
+    const [row] = await db
+      .select()
+      .from(conversations)
+      .where(eq(conversations.id, state.conversationDbId));
+    expect(row?.outcome).toBe('abandoned');
+  });
+
+  it('does not derive "abandoned" for a single quick exchange with nothing known', async () => {
+    await resetDb();
+    const state = await startConversation({
+      channel: 'voice',
+      externalId: 'ctx-outcome-not-abandoned',
+      callerPhone: '+17705550100',
+      rateLimiter: alwaysAllow,
+    });
+    state.messages = [{ role: 'user', content: [{ type: 'text', text: 'what are your hours?' }] }];
+    await finalizeConversation(state);
+    const [row] = await db
+      .select()
+      .from(conversations)
+      .where(eq(conversations.id, state.conversationDbId));
+    expect(row?.outcome).toBe('info_only');
+  });
+
+  it('never derives "abandoned" for SMS, regardless of turn count', async () => {
+    await resetDb();
+    const state = await startConversation({
+      channel: 'sms',
+      externalId: 'ctx-outcome-sms-not-abandoned',
+      callerPhone: '+17705550100',
+      rateLimiter: alwaysAllow,
+    });
+    state.messages = [
+      { role: 'user', content: [{ type: 'text', text: 'my heat is out' }] },
+      { role: 'assistant', content: [{ type: 'text', text: 'what county?' }] },
+      { role: 'user', content: [{ type: 'text', text: 'cobb' }] },
+    ];
+    await finalizeConversation(state);
+    const [row] = await db
+      .select()
+      .from(conversations)
+      .where(eq(conversations.id, state.conversationDbId));
+    expect(row?.outcome).toBe('info_only');
+  });
+
   it('an explicit outcome overrides the derived one', async () => {
     await resetDb();
     const state = await startConversation({
@@ -402,6 +478,72 @@ describe('finalizeConversation — safety_followup (IMPLEMENTATION_PLAN Phase 8)
 
     expect(
       events.filter((e) => e.type === 'sms.queued' && e.kind === 'safety_followup'),
+    ).toHaveLength(0);
+  });
+});
+
+describe('finalizeConversation — abandoned_followup (PRD §3 stretch)', () => {
+  it('publishes an sms.queued abandoned_followup for a voice call that looks abandoned', async () => {
+    await resetDb();
+    const state = await startConversation({
+      channel: 'voice',
+      externalId: 'ctx-finalize-abandoned-followup',
+      callerPhone: '+17705550177',
+      rateLimiter: alwaysAllow,
+    });
+    state.knownName = 'Alex Renner';
+
+    const events: DashboardEvent[] = [];
+    const unsubscribe = eventBus.subscribe((e) => events.push(e));
+    await finalizeConversation(state);
+    unsubscribe();
+
+    const followups = events.filter(
+      (e): e is Extract<DashboardEvent, { type: 'sms.queued' }> =>
+        e.type === 'sms.queued' && e.kind === 'abandoned_followup',
+    );
+    expect(followups).toHaveLength(1);
+    expect(followups[0]?.to).toBe('+17705550177');
+    expect(followups[0]?.body).toContain('Alex');
+  });
+
+  it('does not publish an abandoned_followup for a conversation that booked', async () => {
+    await resetDb();
+    const state = await startConversation({
+      channel: 'voice',
+      externalId: 'ctx-finalize-no-abandoned-followup-booked',
+      callerPhone: '+17705550188',
+      rateLimiter: alwaysAllow,
+    });
+    state.bookingsCount = 1;
+
+    const events: DashboardEvent[] = [];
+    const unsubscribe = eventBus.subscribe((e) => events.push(e));
+    await finalizeConversation(state);
+    unsubscribe();
+
+    expect(
+      events.filter((e) => e.type === 'sms.queued' && e.kind === 'abandoned_followup'),
+    ).toHaveLength(0);
+  });
+
+  it('does not publish an abandoned_followup for SMS conversations', async () => {
+    await resetDb();
+    const state = await startConversation({
+      channel: 'sms',
+      externalId: 'ctx-finalize-no-abandoned-followup-sms',
+      callerPhone: '+17705550199',
+      rateLimiter: alwaysAllow,
+    });
+    state.knownName = 'Jamie Cho';
+
+    const events: DashboardEvent[] = [];
+    const unsubscribe = eventBus.subscribe((e) => events.push(e));
+    await finalizeConversation(state, { outcome: 'abandoned' });
+    unsubscribe();
+
+    expect(
+      events.filter((e) => e.type === 'sms.queued' && e.kind === 'abandoned_followup'),
     ).toHaveLength(0);
   });
 });

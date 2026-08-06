@@ -27,7 +27,7 @@ export type DashboardEvent =
   | { type: 'transfer.requested'; callId: string; reason: string }
   | {
       type: 'sms.queued';
-      kind: 'booking_confirmation' | 'dispatcher_alert' | 'safety_followup';
+      kind: 'booking_confirmation' | 'dispatcher_alert' | 'safety_followup' | 'abandoned_followup';
       to: string;
       body: string;
     }

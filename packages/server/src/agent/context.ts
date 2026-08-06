@@ -154,20 +154,60 @@ export interface FinalizeConversationOptions {
 }
 
 /**
- * Derives an outcome when the caller doesn't supply one explicitly. There's
- * no real disconnect signal yet (Phase 8 telephony), so a conversation that
- * ends without booking/flagging/transferring defaults to `info_only` rather
- * than `abandoned` — `finalizeConversation` is always called deliberately
- * (sim exit, later a call-ended webhook), not on an unexpected drop, so
- * "the caller got through the call without needing any of those" is the
- * more accurate default. A future telephony adapter can pass
- * `{outcome: 'abandoned'}` explicitly on a genuine mid-intake disconnect.
+ * There's still no explicit disconnect-reason signal from Retell wired in
+ * (the WS `close` handler fires on any socket close, clean or not — see
+ * transports/retell/websocket.ts), so this is a heuristic, not a true
+ * "the caller hung up mid-sentence" detector: a voice call that never
+ * reached a terminal outcome counts as abandoned only if there's evidence
+ * the caller was actually mid-intake — either a recognized-caller lookup or
+ * a `book_appointment` attempt already wrote back a name/address (see
+ * `applySideEffects` in agent/loop.ts), or they'd gotten past a couple of
+ * exchanges. A call that ends after one exchange (a quick question, a wrong
+ * number) intentionally does *not* count — PRD §3 scopes recovery to "before
+ * intake is complete," and there's nothing to "pick up where it left off"
+ * for a caller who never engaged. Known false-negative: a caller who
+ * genuinely decides not to book after a full conversation looks identical
+ * to one who got cut off — see docs/KNOWN_LIMITATIONS.md.
+ */
+function looksLikeAbandonedIntake(state: ConversationState): boolean {
+  if (state.channel !== 'voice') return false;
+  if (state.knownName || state.knownAddressLine) return true;
+  const userTurns = state.messages.filter((m) => m.role === 'user').length;
+  return userTurns >= 2;
+}
+
+/**
+ * Derives an outcome when the caller doesn't supply one explicitly.
+ * `finalizeConversation` is always called deliberately (sim exit, the
+ * Retell WS `close` handler, the SMS inactivity sweeper) rather than on some
+ * separate "did this end cleanly" signal, so a conversation that never
+ * booked/flagged/transferred falls through to `looksLikeAbandonedIntake`
+ * before defaulting to `info_only`.
  */
 function deriveOutcome(state: ConversationState): ConversationOutcome {
   if (state.emergencyFlaggedAt) return 'flagged';
   if (state.bookingsCount > 0) return 'booked';
   if (state.transferRequested) return 'transferred';
+  if (looksLikeAbandonedIntake(state)) return 'abandoned';
   return 'info_only';
+}
+
+/**
+ * PRD §3 stretch: "if a call disconnects before intake is complete, auto-
+ * send a follow-up SMS picking up where it left off, rather than losing the
+ * lead entirely." Deliberately generic — nothing here invents specifics
+ * (issue, address) the caller didn't confirm with a human on a callback, the
+ * same "never invent" discipline the live agent follows. Personalizes with a
+ * first name only when one is actually known (recognized caller, or a
+ * `book_appointment` attempt got that far before things fell over).
+ */
+function buildAbandonedFollowupBody(state: ConversationState): string {
+  const firstName = state.knownName?.trim().split(/\s+/)[0];
+  const greeting = firstName ? `Hi ${firstName}` : 'Hi';
+  return (
+    `Summit Air: ${greeting}, looks like we got disconnected. Reply here or call us back ` +
+    'and we’ll pick up right where we left off. Reply STOP to opt out.'
+  );
 }
 
 /**
@@ -210,6 +250,19 @@ export async function finalizeConversation(
       body:
         "Summit Air: if you're still smelling gas or feel unsafe, leave the property now and " +
         'call 911 or your gas utility. We’ve already notified dispatch.',
+    });
+  }
+
+  // Voice-only (PRD §3) — a texter who goes quiet is already handled by the
+  // SMS thread simply resuming later (BUILD_GUIDE §7); proactively texting
+  // an SMS conversation that timed out would be the unsolicited-message
+  // pattern §7's compliance section warns against, not a recovery.
+  if (outcome === 'abandoned' && state.channel === 'voice') {
+    eventBus.publish({
+      type: 'sms.queued',
+      kind: 'abandoned_followup',
+      to: state.callerPhone,
+      body: buildAbandonedFollowupBody(state),
     });
   }
 
