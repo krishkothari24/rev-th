@@ -32,14 +32,14 @@ show up on the call is worth close to zero. A dashboard that lets the evaluator
 ```
    PSTN
      |
-  Twilio number ──┬──> Retell (voice: STT, turn-taking, TTS, LLM loop)
+  Twilio number ──┬──> OpenAI Realtime API (voice: STT, turn-taking, TTS, LLM)
                   │        │
-                  │        │ custom function calls (HTTPS)
+                  │        │ function calls (Realtime tool-call events)
                   │        v
                   │   ┌─────────────────────────────────┐
                   └──>│  Fastify backend                │
    inbound SMS        │                                 │
-                      │  /webhooks/retell               │
+                      │  /webhooks/openai-realtime       │
                       │  /webhooks/twilio-sms           │
                       │  /tools/*   (agent tool layer)  │
                       │  /events    (SSE -> dashboard)  │
@@ -55,10 +55,20 @@ show up on the call is worth close to zero. A dashboard that lets the evaluator
                              (SSE live updates)
 ```
 
-Key decision: **Retell owns the realtime audio loop; we own all business
-logic.** We don't build STT/TTS/barge-in — that's solved, and rebuilding it
-burns the budget on the part nobody grades. We do own triage, matching,
-booking, and safety, because that's where the judgment lives.
+Key decision: **OpenAI Realtime owns the realtime audio loop; we own all
+business logic.** We don't build STT/TTS/barge-in — that's solved, and
+rebuilding it burns the budget on the part nobody grades. We do own triage,
+matching, booking, and safety, because that's where the judgment lives.
+
+> **Phase 11 note:** the project started on Retell (Custom LLM over a
+> WebSocket, with Claude Sonnet as the brain behind it) and migrated to OpenAI
+> Realtime at Phase 11 — see §9 and §12. Two reasons: cost (Retell is a
+> per-minute markup on top of the underlying speech models it calls) and a
+> preference for OpenAI's Realtime voice model over a Retell+Claude voice
+> pipeline. SMS stays on Claude Haiku throughout — that's a separate transport
+> and this migration doesn't touch it. The architectural principle is
+> unchanged: the realtime voice vendor owns audio; our backend owns triage,
+> tools, and safety, regardless of which vendor sits in that box.
 
 Second key decision: **voice and SMS are two transports over one brain.** The
 triage module and tool layer have no idea which channel they're serving. This
@@ -301,20 +311,26 @@ Keep the demo strictly to transactional messages.
 ## §8. Security
 
 ### 8.1 Webhook authenticity
-Retell signs with `x-retell-signature`, formatted `v=<timestamp>,d=<digest>`,
-where digest is HMAC-SHA256 over `raw_body + timestamp` keyed with your Retell
-API key (note: the API key itself is the HMAC secret, and only a key with the
-webhook badge works). Verify with the SDK's `verify` helper, enforce a ~5-minute
-timestamp window, and use constant-time comparison. Twilio signs with
-`X-Twilio-Signature` — use `twilio.validateRequest`.
+OpenAI Realtime sessions are authenticated at the WebSocket/SIP connection
+layer (API key on connect, plus per-session ephemeral tokens for
+browser/client-originated sessions) rather than a per-request HMAC header like
+Retell's. **Before implementing Phase 11, confirm the current authentication
+and any webhook-signing mechanism against OpenAI's live Realtime docs** —
+this changed more than once during the model's beta period and this guide's
+prose should not be treated as the source of truth for the exact header/token
+shape. At minimum: verify the connection is authenticated before accepting any
+audio or tool-call traffic on it, and if OpenAI signs any HTTP callbacks (as
+opposed to the persistent Realtime connection itself), verify those the same
+way as Retell's were verified — raw body preserved, constant-time compare,
+short freshness window. Twilio still signs with `X-Twilio-Signature` — use
+`twilio.validateRequest`; that half is unchanged by this migration.
 
 Fastify's JSON parser consumes the body by default. Register a raw-body plugin
 or a content-type parser that preserves the raw buffer on webhook routes, or
 signature verification silently fails forever and you'll lose an afternoon.
+This applies to any OpenAI HTTP callback routes exactly as it did to Retell's.
 
-Reject unsigned/invalid with 401 and log it. Optionally allowlist Retell's
-published IPs as defense in depth, but signature verification is the real
-control.
+Reject unsigned/invalid/unauthenticated connections and requests, and log it.
 
 ### 8.2 Caller ID is not authentication
 Caller ID is trivially spoofable. This is the security judgment call most
@@ -389,14 +405,20 @@ Health endpoint. No agent yet. Verify: seed runs, board data queryable.
 
 **Phase 2 — Tool layer, offline**
 All five tools as endpoints with Zod validation, idempotency, and unit tests.
-No Retell yet. Verify: curl each tool, correct behavior on bad input and
+No voice vendor yet. Verify: curl each tool, correct behavior on bad input and
 duplicate calls.
 
 **Phase 3 — Voice agent live**
-Retell agent configured, prompt loaded from `prompts/`, Twilio number attached,
-custom functions pointed at the tool endpoints, webhook signature verification.
-**This is the first phase where a phone number works — get here fast.** Verify:
-place a real call, book a routine appointment end to end.
+Voice vendor configured, prompt loaded from `prompts/`, Twilio number attached,
+tool calls pointed at the tool endpoints, webhook/session signature
+verification. **This is the first phase where a phone number works — get here
+fast.** Verify: place a real call, book a routine appointment end to end.
+
+> This project originally built Phase 3 on Retell; **Phase 11 (§9, §12)
+> migrates the voice vendor to OpenAI Realtime.** The phase numbering below is
+> conceptual — the actual, currently-tracked phase sequence with spend ledger
+> and done-when criteria lives in `docs/IMPLEMENTATION_PLAN.md`, which is the
+> file to follow when implementing.
 
 **Phase 4 — Triage and safety**
 Triage module, deterministic safety override, emergency flagging, dispatcher
@@ -477,3 +499,77 @@ Build these alongside the code; they're part of the deliverable:
 
 Prepare to iterate live: they will ask for a prompt change during the call. Keep
 prompt hot-reload working in dev and know exactly where each behavior lives.
+
+---
+
+## §12. Phase 11 — Voice vendor migration: Retell → OpenAI Realtime
+
+Runs after the Retell-based build (IMPLEMENTATION_PLAN.md Phases 0–10) is
+working end to end. Two drivers, both explicit product decisions, not
+technical necessity: **cost** (Retell bills per-minute on top of whatever
+speech/LLM stack it's calling underneath — it's a markup layer, not a
+pass-through) and a **preference for OpenAI's Realtime voice model** over a
+Retell-fronted Claude voice pipeline. SMS is untouched — it's a separate
+transport and stays on Claude Haiku throughout.
+
+**What does not change:** the tool layer (`/tools/*`), the triage module, the
+deterministic safety override, Zod validation as the security boundary, and
+the dashboard/SSE layer. All of that lives in the backend and has no idea
+which vendor is on the other end of the phone call — that separation is the
+entire point of §1's "vendor owns audio, we own business logic" split, and
+this migration is the proof it actually holds.
+
+**What changes:**
+
+- **New transport adapter.** `src/transports/openai-realtime/` replaces
+  `src/transports/retell/` as the active voice transport. Keep the Retell
+  adapter in the tree (or behind a feature flag) rather than deleting it
+  outright until the new one is proven on a real call — it's a working
+  reference and a rollback path.
+- **Connection model.** OpenAI Realtime is a persistent WebSocket (or SIP)
+  session per call rather than Retell's split "socket for the LLM loop, HTTP
+  webhook for call lifecycle events" model. Before writing the adapter,
+  WebFetch OpenAI's current Realtime API docs and confirm: the exact
+  connection/auth flow for a telephony-originated call, the event schema for
+  turn boundaries and interruptions (Retell's `response_required` /
+  `agent_interrupt` equivalents), and the tool/function-calling event shape.
+  **Do not assume the shapes documented for Retell in IMPLEMENTATION_PLAN.md
+  carry over** — they won't; this guide's Retell protocol notes describe a
+  different vendor's wire format.
+- **Twilio ↔ OpenAI Realtime bridging.** Confirm the current recommended
+  pattern for connecting a Twilio phone number's inbound audio to an OpenAI
+  Realtime session (this has evolved — check whether it's a media-stream
+  WebSocket bridge you host, or a more direct SIP trunking path OpenAI now
+  offers). Retell's "import your Twilio number" flow does not have a
+  guaranteed equivalent; budget real investigation time here before writing
+  the adapter, not after.
+- **Safety override injection.** The deterministic gas-leak override (§5)
+  must still be able to force the emergency path and interrupt mid-utterance
+  regardless of vendor. Find OpenAI Realtime's equivalent of Retell's
+  `agent_interrupt` frame and wire the override to it the same way — this is
+  the one piece of the migration that is non-negotiable to get right, since
+  it's the project's core safety claim.
+- **Webhook/session authentication.** See §8.1 — do not port Retell's
+  `x-retell-signature` HMAC verification as-is; confirm and implement
+  whatever OpenAI Realtime's current auth model actually is.
+- **Tool-call wire format.** OpenAI Realtime's function-calling event shape
+  differs from Retell's `tool_call_invocation` / `tool_call_result` frames.
+  The tool *handlers* in `src/tools/` don't change; only the adapter code that
+  translates between the Realtime event stream and those handlers does.
+- **Dynamic context injection.** Confirm how OpenAI Realtime accepts a
+  per-session system prompt / instructions and any per-call dynamic variables
+  (current date, season, returning-caller summary) — the mechanism won't be
+  identical to Retell's `retell_llm_dynamic_variables`, but the underlying
+  rule from §3 still applies: inject a short pre-rendered summary, never a
+  raw customer record.
+- **Latency budget.** Re-verify first-token latency against OpenAI Realtime's
+  actual behavior rather than assuming Retell's ~600–800ms target transfers.
+  Barge-in feel, dead-air tolerance, and tool round-trip time all need to be
+  re-tuned against the new vendor on real calls (§10, Phase 10 territory,
+  repeated here for the new vendor).
+
+**Done when:** a real call over the OpenAI Realtime-backed number books a
+routine appointment end to end, the sabotaged-prompt safety test (§9 Phase 4's
+proof) still passes with the new vendor in place, and per-minute cost is
+verified to have actually dropped versus the Retell baseline — the whole
+point of doing this migration was cost, so measure it rather than assume it.

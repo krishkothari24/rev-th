@@ -46,6 +46,7 @@ Local Postgres, no container needed.
 | Railway (already have account) | hobby tier | Phase 9 |
 | Retell | per-minute, has trial credit | Phase 9 |
 | Twilio number + minutes | ~$1.15/mo + ~$0.014/min | Phase 9, **last** |
+| OpenAI Realtime API | per-minute audio, no separate per-minute vendor markup on top | Phase 11 (replaces Retell's line item — measure the delta, that's the point) |
 
 Phases 0–3 are 100% deterministic — zero tokens, and the test suite stays at $0
 permanently because it runs against a scripted model provider. Phase 4 is where
@@ -311,6 +312,60 @@ than getting caught by one.
 
 Keep prompt hot-reload working — they will ask for a live prompt change during
 the call, and you need to know exactly where each behavior lives.
+
+## Phase 11 — Voice vendor migration: Retell → OpenAI Realtime  *(changes the spend profile)*
+
+Runs after Phase 10 is solid on Retell — this is a deliberate post-hoc swap of
+the voice vendor, not a course correction. Two drivers: **cost** (Retell bills
+per-minute on top of the underlying speech/LLM stack it calls — a markup
+layer, not a pass-through) and a preference for **OpenAI's Realtime voice
+model** over a Retell-fronted Claude voice pipeline. SMS is unaffected — it
+stays on Claude Haiku through a separate transport untouched by this phase.
+Full rationale and the detailed migration checklist live in
+`docs/BUILD_GUIDE.md` §12; this entry is the phase-plan summary.
+
+**What stays exactly as-is:** `src/tools/*`, `src/triage/*`, the safety
+override, Zod validation, the event bus, and the dashboard. None of it knows
+which vendor is on the other end of the call — that boundary is what makes
+this a transport swap instead of a rewrite.
+
+**What this phase actually does:**
+
+1. **Research first, code second.** WebFetch OpenAI's current Realtime API
+   docs before writing anything — connection/auth model for a
+   telephony-originated session, the turn-boundary and interruption event
+   shapes (the equivalent of Retell's `response_required` /
+   `agent_interrupt`), the function-calling event shape, and the current
+   recommended Twilio-number-to-Realtime-session bridging pattern. This
+   guide's Retell protocol notes do not carry over — different vendor, and it
+   is very likely to have evolved since this document was written.
+2. **New adapter**, `src/transports/openai-realtime/`, implementing the same
+   contract the Retell adapter exposes to the agent loop. Leave the Retell
+   adapter in the tree (behind a flag or just unused) as a working reference
+   and rollback path until the new one is proven on a real call.
+3. **Re-wire the safety-override interrupt path** to whatever OpenAI
+   Realtime's mid-utterance interrupt mechanism is. This is the one piece of
+   the migration where a mistake actually matters — the gas-leak override
+   forcing the emergency path regardless of vendor is the project's core
+   safety claim, and it has to survive the vendor swap intact.
+4. **Webhook/session auth** per BUILD_GUIDE §8.1 — implement whatever OpenAI's
+   current authentication model is; do not port Retell's HMAC scheme as-is.
+5. **Dynamic context injection** (current date/season, returning-caller
+   summary) via whatever mechanism OpenAI Realtime exposes for per-session
+   instructions — same rule as before: pre-rendered summary string, never a
+   raw customer record.
+6. **Re-run the sabotaged-prompt safety test** (Phase 4's proof) against the
+   new vendor. If it doesn't still pass, the migration isn't done.
+7. **Re-tune latency** against OpenAI Realtime's actual first-token and
+   turn-taking behavior — don't assume Retell's ~600–800ms target transfers.
+8. **Measure the cost delta.** The whole point of this phase was cost — verify
+   it, don't assume it. Compare per-minute spend against the Retell baseline
+   from real or estimated call volume.
+
+**Done when:** a real call over the OpenAI Realtime-backed number books a
+routine appointment end to end, the sabotaged-prompt safety test still passes,
+barge-in and dead-air feel acceptable on a live call, and the measured
+per-minute cost is lower than the Retell baseline.
 
 ---
 
