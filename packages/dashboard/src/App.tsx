@@ -8,6 +8,7 @@ import { LiveCallBanner } from './components/LiveCallBanner';
 import { DispatchBoard } from './components/DispatchBoard';
 import { EmergencyRail } from './components/EmergencyRail';
 import { ActivityFeed } from './components/ActivityFeed';
+import { SimPanel } from './components/SimPanel';
 
 const HIGHLIGHT_MS = 3000;
 const ACTIVITY_LIMIT = 50;
@@ -152,7 +153,7 @@ export function App() {
       <header className="flex items-center gap-3">
         <h1 className="text-lg font-semibold text-[var(--text-primary)]">Summit Air — Dispatch</h1>
         <span
-          className="ml-auto flex items-center gap-1.5 text-xs text-[var(--text-secondary)]"
+          className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]"
           aria-live="polite"
         >
           <span
@@ -162,6 +163,9 @@ export function App() {
           />
           {CONNECTION_LABEL[connectionStatus]}
         </span>
+        <div className="ml-auto">
+          <SimPanel />
+        </div>
       </header>
 
       {error && (

@@ -102,3 +102,70 @@ describe('POST /dashboard/emergencies/:id/acknowledge', () => {
     expect(res.statusCode).toBe(404);
   });
 });
+
+describe('POST /dashboard/sim/*', () => {
+  let app: FastifyInstance;
+
+  beforeAll(async () => {
+    app = await buildApp();
+  });
+
+  beforeEach(async () => {
+    await resetDb();
+    await seedFixtures();
+  });
+
+  afterAll(async () => {
+    await app?.close();
+  });
+
+  it('400s /sim/start on a malformed phone number', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/dashboard/sim/start',
+      payload: { callerPhone: 'not-a-phone' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe('invalid_body');
+  });
+
+  // No ANTHROPIC_API_KEY in the test environment (evals/CI stay $0) — this
+  // is the exact path a fresh clone hits before Phase 9's account setup, and
+  // is the behavior worth pinning: a clean 503, not a bare crash.
+  it('503s /sim/start when no ANTHROPIC_API_KEY is configured', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/dashboard/sim/start',
+      payload: { callerPhone: '+17705550310' },
+    });
+    expect(res.statusCode).toBe(503);
+    expect(res.json().error).toBe('sim_unavailable');
+  });
+
+  it('400s /sim/turn on a missing message', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/dashboard/sim/turn',
+      payload: { externalId: 'whatever' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('404s /sim/turn against an unknown externalId', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/dashboard/sim/turn',
+      payload: { externalId: 'does-not-exist', message: 'hello' },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('404s /sim/end against an unknown externalId', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/dashboard/sim/end',
+      payload: { externalId: 'does-not-exist' },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+});

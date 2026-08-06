@@ -42,7 +42,7 @@ export type DashboardEvent =
   | { type: 'transfer.requested'; callId: string; reason: string }
   | {
       type: 'sms.queued';
-      kind: 'booking_confirmation' | 'dispatcher_alert' | 'safety_followup';
+      kind: 'booking_confirmation' | 'dispatcher_alert' | 'safety_followup' | 'abandoned_followup';
       to: string;
       body: string;
     }
@@ -80,7 +80,7 @@ export const dashboardEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('transfer.requested'), callId: z.string(), reason: z.string() }),
   z.object({
     type: z.literal('sms.queued'),
-    kind: z.enum(['booking_confirmation', 'dispatcher_alert', 'safety_followup']),
+    kind: z.enum(['booking_confirmation', 'dispatcher_alert', 'safety_followup', 'abandoned_followup']),
     to: z.string(),
     body: z.string(),
   }),

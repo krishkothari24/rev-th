@@ -13,6 +13,7 @@ import { registerEventsRelayRoute } from './events/relay.js';
 import { registerSmsOutboundSubscriber } from './sms/outboundSubscriber.js';
 import { registerTwilioSmsRoute } from './transports/twilio/sms.js';
 import { startSmsInactivitySweeper } from './transports/twilio/conversationStore.js';
+import { startSimSessionSweeper } from './dashboard/simSession.js';
 import { registerRetellWebhookRoute } from './transports/retell/webhook.js';
 import { registerRetellWebsocketRoute } from './transports/retell/websocket.js';
 
@@ -93,9 +94,11 @@ export async function buildApp(): Promise<FastifyInstance> {
   // and transports/twilio/conversationStore.ts.
   const unsubscribeSmsOutbound = registerSmsOutboundSubscriber();
   const stopSmsSweeper = startSmsInactivitySweeper();
+  const stopSimSweeper = startSimSessionSweeper();
   app.addHook('onClose', async () => {
     unsubscribeSmsOutbound();
     stopSmsSweeper();
+    stopSimSweeper();
   });
 
   return app;
