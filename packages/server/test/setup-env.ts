@@ -20,3 +20,11 @@ process.env.NODE_ENV = 'test';
 process.env.RETELL_API_KEY ??= 'test-retell-api-key';
 process.env.TWILIO_AUTH_TOKEN ??= 'test-twilio-auth-token';
 process.env.PUBLIC_BASE_URL ??= 'http://localhost:3100';
+
+// IMPLEMENTATION_PLAN Phase 11 — same reasoning as the Retell/Twilio vars
+// above: fixtures sign against a synthetic secret, no real OpenAI account
+// needed to run these tests. Valid-shaped base64 payload so
+// `signature.ts`'s `Buffer.from(secret, 'base64')` decoding exercises the
+// real code path rather than an empty/garbage key.
+process.env.OPENAI_API_KEY ??= 'test-openai-api-key';
+process.env.OPENAI_WEBHOOK_SECRET ??= 'whsec_dGVzdC1vcGVuYWktd2ViaG9vay1zZWNyZXQ=';

@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../../src/app.js';
+import { config } from '../../src/config.js';
 import { db } from '../../src/db/client.js';
 import { emergencyFlags } from '../../src/db/schema.js';
 import { resetDb, seedFixtures } from '../helpers/db.js';
@@ -129,17 +130,29 @@ describe('POST /dashboard/sim/*', () => {
     expect(res.json().error).toBe('invalid_body');
   });
 
-  // No ANTHROPIC_API_KEY in the test environment (evals/CI stay $0) — this
-  // is the exact path a fresh clone hits before Phase 9's account setup, and
-  // is the behavior worth pinning: a clean 503, not a bare crash.
+  // This is the exact path a fresh clone hits before an ANTHROPIC_API_KEY is
+  // ever configured, and is the behavior worth pinning: a clean 503, not a
+  // bare crash. `config.ANTHROPIC_API_KEY` is forced empty for the duration
+  // of this one test (restored in `finally`) rather than relying on the
+  // ambient test environment lacking a real key — `test/setup-env.ts`
+  // deliberately leaves it untouched so the opt-in live tests elsewhere in
+  // the suite can use a real one, which means a developer's own `.env`
+  // having a real key (as it will from Phase 9 onward) would otherwise make
+  // this specific assertion false without this override.
   it('503s /sim/start when no ANTHROPIC_API_KEY is configured', async () => {
-    const res = await app.inject({
-      method: 'POST',
-      url: '/dashboard/sim/start',
-      payload: { callerPhone: '+17705550310' },
-    });
-    expect(res.statusCode).toBe(503);
-    expect(res.json().error).toBe('sim_unavailable');
+    const realKey = config.ANTHROPIC_API_KEY;
+    config.ANTHROPIC_API_KEY = undefined;
+    try {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/dashboard/sim/start',
+        payload: { callerPhone: '+17705550310' },
+      });
+      expect(res.statusCode).toBe(503);
+      expect(res.json().error).toBe('sim_unavailable');
+    } finally {
+      config.ANTHROPIC_API_KEY = realKey;
+    }
   });
 
   it('400s /sim/turn on a missing message', async () => {

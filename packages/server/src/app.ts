@@ -16,6 +16,7 @@ import { startSmsInactivitySweeper } from './transports/twilio/conversationStore
 import { startSimSessionSweeper } from './dashboard/simSession.js';
 import { registerRetellWebhookRoute } from './transports/retell/webhook.js';
 import { registerRetellWebsocketRoute } from './transports/retell/websocket.js';
+import { registerOpenAIRealtimeWebhookRoute } from './transports/openai-realtime/webhook.js';
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
@@ -28,6 +29,7 @@ export async function buildApp(): Promise<FastifyInstance> {
           'req.headers.authorization',
           'req.headers["x-retell-signature"]',
           'req.headers["x-twilio-signature"]',
+          'req.headers["webhook-signature"]',
           'req.body.phone',
           'req.body.address_line',
           'req.body.name',
@@ -88,6 +90,10 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(registerTwilioSmsRoute);
   await app.register(registerRetellWebhookRoute);
   await app.register(registerRetellWebsocketRoute);
+  // OpenAI Realtime is the live voice vendor (IMPLEMENTATION_PLAN Phase
+  // 11); the Retell registrations above stay registered as the
+  // fixture-tested rollback path — see docs/BUILD_GUIDE.md §12.
+  await app.register(registerOpenAIRealtimeWebhookRoute);
 
   // Per-buildApp() registration (several tests call buildApp() more than
   // once per process), torn down on close — see sms/outboundSubscriber.ts

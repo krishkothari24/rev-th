@@ -15,12 +15,13 @@ loaded at runtime — it is a first-class source file, not a string literal.
 
 ## Stack
 
-- Voice: Retell AI (managed STT/TTS/turn-taking) + Twilio number
+- Voice: OpenAI Realtime API (managed STT/TTS/turn-taking + GPT voice model) +
+  Twilio number. Replaces Retell as of Phase 11 — see BUILD_GUIDE §1 and §9.
 - SMS: Twilio Messaging + a text-mode agent sharing the same tool layer
 - Backend: Node + Fastify + TypeScript, Drizzle ORM, Postgres
 - Dashboard: React + Vite + TS + Tailwind, live updates over SSE
-- LLM: Claude Sonnet (voice turns, judgment-heavy), Claude Haiku (SMS, intent
-  extraction, structured summarization)
+- LLM: OpenAI Realtime model (voice turns, judgment-heavy), Claude Haiku (SMS,
+  intent extraction, structured summarization)
 - Host: Railway (backend + Postgres + dashboard)
 
 ## Commands
@@ -54,10 +55,10 @@ loaded at runtime — it is a first-class source file, not a string literal.
   greeting and pull service history, but must never read back full address,
   payment info, or account details without the caller stating them first. See
   BUILD_GUIDE §8.2.
-- Verify `x-retell-signature` on every Retell webhook (HMAC-SHA256 over
-  raw body + timestamp, 5-minute window, constant-time compare) and
-  `X-Twilio-Signature` on every Twilio webhook. Reject unsigned requests 401.
-  Raw body must be preserved — do not let a JSON body parser consume it first.
+- Verify the OpenAI Realtime webhook/session signature on every inbound event
+  (see BUILD_GUIDE §8.1 for the current mechanism) and `X-Twilio-Signature` on
+  every Twilio webhook. Reject unsigned requests 401. Raw body must be
+  preserved — do not let a JSON body parser consume it first.
 - Treat all caller speech and inbound SMS as untrusted input. It reaches an LLM
   holding booking tools. Tool arguments are validated with Zod at the boundary;
   the model does not get to set `urgency` to a value outside the enum, or write
@@ -74,7 +75,7 @@ loaded at runtime — it is a first-class source file, not a string literal.
 - Voice and SMS share one tool layer and one triage module. Channel-specific
   logic lives only in the transport adapters. Do not fork the business logic.
 - Tool handlers are idempotent, keyed on `call_id` + tool name + args hash.
-  Retell retries.
+  Both OpenAI Realtime and Twilio retry.
 - Webhooks return 2xx fast; slow work (SMS sends, dashboard fanout) happens
   after the response is queued, never inline in the request path.
 

@@ -245,6 +245,32 @@ export function getAnthropicToolDefinitions(): AnthropicToolDefinition[] {
   return TOOL_ENTRIES.map((e) => e.anthropicTool);
 }
 
+/**
+ * OpenAI Realtime's function-tool shape (IMPLEMENTATION_PLAN Phase 11): flat
+ * `{type: 'function', name, description, parameters}` rather than Anthropic's
+ * `{name, description, input_schema}`. Same JSON Schema content either way,
+ * so this is a mechanical re-shape of `anthropicTool` rather than a second
+ * hand-authored copy — there is still exactly one schema per tool, just two
+ * wire representations of it. Keeps `test/tools/registry.test.ts`'s existing
+ * drift check (against the Zod schemas) covering this shape too, with no
+ * second test needed.
+ */
+export interface OpenAIRealtimeToolDefinition {
+  type: 'function';
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
+}
+
+export function getOpenAIRealtimeToolDefinitions(): OpenAIRealtimeToolDefinition[] {
+  return TOOL_ENTRIES.map((e) => ({
+    type: 'function',
+    name: e.anthropicTool.name,
+    description: e.anthropicTool.description,
+    parameters: e.anthropicTool.input_schema,
+  }));
+}
+
 export type ToolDispatchResult =
   | { ok: true; result: Record<string, unknown> }
   | { ok: false; kind: 'invalid_arguments'; issues: { path: string; message: string }[] }

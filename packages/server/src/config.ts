@@ -34,6 +34,18 @@ const schema = z.object({
   RETELL_API_KEY: z.string().optional(),
   RETELL_AGENT_ID: z.string().optional(),
 
+  // OpenAI Realtime (IMPLEMENTATION_PLAN Phase 11) — the live voice vendor.
+  // Model/voice defaults are current as of this migration's research pass
+  // (BUILD_GUIDE §12); confirm against the OpenAI dashboard before Phase 11
+  // step 4 (accounts) in case the GA lineup has moved on again.
+  OPENAI_API_KEY: z.string().optional(),
+  OPENAI_REALTIME_MODEL: z.string().default('gpt-realtime'),
+  OPENAI_REALTIME_VOICE: z.string().default('marin'),
+  // Svix-format webhook signing secret ("whsec_..."), issued when the
+  // realtime.call.incoming webhook endpoint is configured in the OpenAI
+  // dashboard. See transports/openai-realtime/signature.ts.
+  OPENAI_WEBHOOK_SECRET: z.string().optional(),
+
   TWILIO_ACCOUNT_SID: z.string().optional(),
   TWILIO_AUTH_TOKEN: z.string().optional(),
   TWILIO_PHONE_NUMBER: z.string().optional(),
