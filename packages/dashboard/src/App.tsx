@@ -12,6 +12,11 @@ import { SimPanel } from './components/SimPanel';
 
 const HIGHLIGHT_MS = 3000;
 const ACTIVITY_LIMIT = 50;
+// A failed load shouldn't latch forever — retry on this cadence until a
+// refresh succeeds and clears `error`. 3s keeps a transient dev-server
+// restart (tsx watch, a bad deploy) invisible without hammering the rate
+// limit (60/min on this route — see dashboard/routes.ts).
+const RETRY_DELAY_MS = 3000;
 
 const CONNECTION_LABEL: Record<ConnectionStatus, string> = {
   connecting: 'Connecting…',
@@ -119,6 +124,30 @@ export function App() {
   }, [refresh]);
 
   const connectionStatus = useEventStream(handleEvent, handleOpen);
+
+  // Initial load. Previously this relied entirely on useEventStream's
+  // onOpen firing once the SSE connection came up — fine once the backend
+  // is stable, but it meant a fetch that happened to land mid-restart (tsx
+  // watch, a redeploy) failed once and the dashboard never tried again:
+  // `board` stayed null ("Loading dispatch board…" forever) even after the
+  // server recovered, since nothing else calls refresh() on a timer. Fetch
+  // independently on mount so a healthy backend always gets picked up
+  // without needing a page reload; onOpen's refresh (including on SSE
+  // reconnects) still runs alongside this as the resync path §6 depends on.
+  useEffect(() => {
+    void refresh(viewedDateRef.current ?? undefined);
+  }, [refresh]);
+
+  // ...and retry on a timer while `error` is set, instead of latching a
+  // failed load forever. Stops as soon as a refresh succeeds (refresh()
+  // clears `error` on success), so this is a no-op once the board is healthy.
+  useEffect(() => {
+    if (!error) return;
+    const timer = setTimeout(() => {
+      void refresh(viewedDateRef.current ?? undefined);
+    }, RETRY_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [error, refresh]);
 
   useEffect(() => {
     if (!highlightAppointmentId) return;
