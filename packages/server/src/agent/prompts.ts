@@ -81,7 +81,7 @@ const MEMBERSHIP_LABEL: Record<'basic' | 'comfort_club', string> = {
  * way to censor free-text model output after the fact, so the block has to
  * happen here: whether the model is even *told* it may bring up membership
  * is a deterministic function of this turn's triage, computed before the
- * model is ever called — same pattern as SAFETY_DIRECTIVE in agent/loop.ts.
+ * model is ever called — same pattern as SAFETY_DIRECTIVE in agent/safetyOverride.ts.
  * A gas-leak-adjacent "hey while we're at it, got a membership plan?" can't
  * pry this open, because the permission line itself refuses regardless of
  * membership status once urgency/safety fires.

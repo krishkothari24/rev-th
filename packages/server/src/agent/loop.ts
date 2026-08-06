@@ -25,12 +25,14 @@
 import { classifyUrgency } from '../triage/classify.js';
 import { detectVulnerablePerson } from '../triage/vulnerability.js';
 import { dispatchTool, getAnthropicToolDefinitions } from '../tools/registry.js';
-import { emergencyReasonEnum, type EmergencyReason } from '../db/schema.js';
-import { isCounty } from '../domain/constants.js';
 import { eventBus } from '../events/bus.js';
+import { runCallStartRecognition } from './callStartRecognition.js';
 import { applyServerOwnedOverrides } from './serverOwnedFields.js';
+import { applySideEffects } from './sideEffects.js';
 import { buildSystemPromptForTurn } from './prompts.js';
+import { fireSafetyOverride } from './safetyOverride.js';
 import { hasAlreadyFlagged, isBookingCapExceeded } from './caps.js';
+import type { EmergencyReason } from '../db/schema.js';
 import type { ClassifyUrgencyResult } from '../triage/classify.js';
 import type {
   AgentProvider,
@@ -47,14 +49,6 @@ import type {
  * entirely and returns a safe fallback reply rather than a 5th round-trip. */
 export const MAX_TOOL_ROUNDS_PER_TURN = 4;
 
-const SAFETY_DIRECTIVE = (emergencyId: unknown): string =>
-  '[SAFETY OVERRIDE — SYSTEM INJECTED, NOT CALLER SPEECH]: A gas-hazard indicator was ' +
-  `detected on this call. Emergency dispatch has already been notified automatically ` +
-  `(reference: ${String(emergencyId)}). Tell the caller now, clearly and calmly, to leave ` +
-  'the property immediately, avoid light switches and anything electrical, and call the ' +
-  'gas utility or 911 once safely outside. Do not continue with routine booking on this ' +
-  'call. Stay on the line, keep them calm, and confirm they are safely out.';
-
 const REMINDER_DIRECTIVE =
   '[SYSTEM REMINDER — NOT CALLER SPEECH]: The caller has gone quiet. Briefly check in or offer ' +
   'to continue; do not restate everything already covered.';
@@ -63,8 +57,12 @@ const REMINDER_DIRECTIVE =
  * anything yet this conversation (`state.lastTriage` is still null) — a
  * neutral, non-firing triage so the model-round helper has something to pass
  * to `applyServerOwnedOverrides` without running a fresh classification (a
- * reminder carries no new caller speech, so there's nothing to classify). */
-const ROUTINE_NO_OVERRIDE_TRIAGE: ClassifyUrgencyResult = {
+ * reminder carries no new caller speech, so there's nothing to classify).
+ * Exported for the same reason (IMPLEMENTATION_PLAN Phase 11): the OpenAI
+ * Realtime adapter's function-call handler needs an identical "nothing
+ * classified yet" fallback for a tool call that arrives before any caller
+ * transcript has landed. */
+export const ROUTINE_NO_OVERRIDE_TRIAGE: ClassifyUrgencyResult = {
   urgency: 'routine',
   requiredSkills: [],
   safetyOverride: { fired: false },
@@ -91,27 +89,14 @@ export async function runTurn(
 ): Promise<TurnResult> {
   const toolCalls: ExecutedToolCall[] = [];
 
-  // Call-start recognition (IMPLEMENTATION_PLAN Phase 6, BUILD_GUIDE §3):
+  // Call-start recognition (IMPLEMENTATION_PLAN Phase 6/11, BUILD_GUIDE §3):
   // fires at most once per conversation, before the caller's first utterance
   // is even recorded, so a known customer's propertyType/membership are
   // already in state by the time triage and the model run on turn one. This
   // is code-initiated, not the model's decision — same shape as the
   // safety-override auto-fire below.
-  if (!state.customerLookupAttempted) {
-    state.customerLookupAttempted = true;
-    const dispatchArgs = { call_id: state.externalId, phone: state.callerPhone };
-    const dispatch = await dispatchTool('customer_lookup', dispatchArgs);
-    const result = dispatch.ok ? dispatch.result : { found: false, error: dispatch.kind };
-    toolCalls.push({
-      name: 'customer_lookup',
-      modelArgs: {},
-      dispatchedArgs: dispatchArgs,
-      result,
-      isError: !dispatch.ok,
-      initiator: 'loop',
-    });
-    if (dispatch.ok) applySideEffects(state, 'customer_lookup', dispatchArgs, dispatch.result);
-  }
+  const recognitionCall = await runCallStartRecognition(state);
+  if (recognitionCall) toolCalls.push(recognitionCall);
 
   appendUserText(state, callerUtterance);
   state.transcriptAccumulator = state.transcriptAccumulator
@@ -140,31 +125,14 @@ export async function runTurn(
   let emergencyFlaggedThisTurn = false;
 
   if (triage.safetyOverride.fired && !hasAlreadyFlagged(state)) {
-    const reason = triage.safetyOverride.reason;
-    opts.onSafetyOverrideFired?.(reason);
-    const dispatchArgs = {
-      call_id: state.externalId,
-      phone: state.callerPhone,
-      address: state.knownAddressLine ?? 'address not yet given',
-      reason,
-      notes: 'Auto-flagged by the deterministic safety override, independent of the model.',
-    };
-    const dispatch = await dispatchTool('flag_emergency', dispatchArgs);
-    const result = dispatch.ok ? dispatch.result : { flagged: false, error: dispatch.kind };
-    toolCalls.push({
-      name: 'flag_emergency',
-      modelArgs: {},
-      dispatchedArgs: dispatchArgs,
-      result,
-      isError: !dispatch.ok,
-      initiator: 'loop',
-    });
-
-    if (dispatch.ok) {
-      state.emergencyFlaggedAt = new Date();
-      state.emergencyFlagReason = reason;
-      emergencyFlaggedThisTurn = true;
-      appendUserText(state, SAFETY_DIRECTIVE(dispatch.result.emergency_id));
+    opts.onSafetyOverrideFired?.(triage.safetyOverride.reason);
+    const outcome = await fireSafetyOverride(state, triage);
+    if (outcome) {
+      toolCalls.push(outcome.toolCall);
+      if (outcome.flagged && outcome.directive) {
+        emergencyFlaggedThisTurn = true;
+        appendUserText(state, outcome.directive);
+      }
     }
   }
 
@@ -363,77 +331,3 @@ function toolResultBlock(
   };
 }
 
-function isEmergencyReason(value: unknown): value is EmergencyReason {
-  return (
-    typeof value === 'string' &&
-    (emergencyReasonEnum.enumValues as readonly string[]).includes(value)
-  );
-}
-
-/**
- * Opportunistic internal bookkeeping from a successful tool result — never
- * used to decide what's safe to *say* aloud (that's a prompt/§8.2 concern),
- * only to keep the loop's own state (booking count, known facts for a
- * future flag_emergency call) current.
- */
-function applySideEffects(
-  state: ConversationState,
-  toolName: string,
-  dispatchedArgs: Record<string, unknown>,
-  result: Record<string, unknown>,
-): void {
-  switch (toolName) {
-    case 'customer_lookup': {
-      if (result.found === true && result.customer && typeof result.customer === 'object') {
-        const customer = result.customer as Record<string, unknown>;
-        if (typeof customer.name === 'string') state.knownName = customer.name;
-        if (typeof customer.address_line === 'string')
-          state.knownAddressLine = customer.address_line;
-        if (typeof customer.city === 'string') state.knownCity = customer.city;
-        if (typeof customer.county === 'string' && isCounty(customer.county))
-          state.knownCounty = customer.county;
-        if (customer.property_type === 'commercial' || customer.property_type === 'residential') {
-          state.propertyType = customer.property_type;
-        }
-        if (customer.membership_tier === 'basic' || customer.membership_tier === 'comfort_club') {
-          state.knownMembershipTier = customer.membership_tier;
-        }
-        if (typeof result.summary === 'string') state.recognizedCustomerSummary = result.summary;
-      }
-      break;
-    }
-    case 'book_appointment': {
-      if (result.booked === true) {
-        state.bookingsCount += 1;
-        if (typeof dispatchedArgs.name === 'string') state.knownName = dispatchedArgs.name;
-        if (typeof dispatchedArgs.address_line === 'string')
-          state.knownAddressLine = dispatchedArgs.address_line;
-        if (typeof dispatchedArgs.city === 'string') state.knownCity = dispatchedArgs.city;
-        if (typeof dispatchedArgs.county === 'string' && isCounty(dispatchedArgs.county)) {
-          state.knownCounty = dispatchedArgs.county;
-        }
-        if (
-          dispatchedArgs.property_type === 'commercial' ||
-          dispatchedArgs.property_type === 'residential'
-        ) {
-          state.propertyType = dispatchedArgs.property_type;
-        }
-      }
-      break;
-    }
-    case 'flag_emergency': {
-      if (result.flagged === true) {
-        state.emergencyFlaggedAt = state.emergencyFlaggedAt ?? new Date();
-        if (isEmergencyReason(dispatchedArgs.reason))
-          state.emergencyFlagReason = dispatchedArgs.reason;
-      }
-      break;
-    }
-    case 'transfer_to_human': {
-      if (result.transfer === true) state.transferRequested = true;
-      break;
-    }
-    default:
-      break;
-  }
-}

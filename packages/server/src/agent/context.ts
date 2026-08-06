@@ -161,7 +161,7 @@ export interface FinalizeConversationOptions {
  * reached a terminal outcome counts as abandoned only if there's evidence
  * the caller was actually mid-intake — either a recognized-caller lookup or
  * a `book_appointment` attempt already wrote back a name/address (see
- * `applySideEffects` in agent/loop.ts), or they'd gotten past a couple of
+ * `applySideEffects` in agent/sideEffects.ts), or they'd gotten past a couple of
  * exchanges. A call that ends after one exchange (a quick question, a wrong
  * number) intentionally does *not* count — PRD §3 scopes recovery to "before
  * intake is complete," and there's nothing to "pick up where it left off"
