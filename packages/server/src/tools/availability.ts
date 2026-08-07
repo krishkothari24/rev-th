@@ -40,11 +40,18 @@ async function getEligibleTechnicians(county: County, requiredSkills: readonly S
  * Concrete open slots, nearest first. For an emergency urgency this doubles
  * as "immediate dispatch" — the search order already surfaces today's
  * openings before any later day, so no separate code path is needed.
+ *
+ * `earliestDateParam` lets a caller's explicit day preference ("anytime
+ * tomorrow," "not until next week") skip straight past days that were never
+ * going to satisfy it — without it, the greedy nearest-first fill exhausts
+ * `limit` on today's openings before a caller who explicitly asked for a
+ * later day ever sees one.
  */
 export async function findAvailableSlots(opts: {
   county: County;
   requiredSkills: readonly Skill[];
   now?: Date;
+  earliestDateParam?: string;
   limit?: number;
 }): Promise<SlotCandidate[]> {
   const now = opts.now ?? new Date();
@@ -85,6 +92,11 @@ export async function findAvailableSlots(opts: {
   const candidates: SlotCandidate[] = [];
   for (let dayOffset = 0; dayOffset < SEARCH_DAYS && candidates.length < limit; dayOffset++) {
     const dateParam = shiftDateParam(nowDateParam, dayOffset);
+    // Anchored to real "now" so the DB horizon query below (also `now` +
+    // SEARCH_DAYS) always covers every date this loop can reach — only skip
+    // days before the caller's requested earliest date, don't shift the
+    // window itself.
+    if (opts.earliestDateParam && dateParam < opts.earliestDateParam) continue;
 
     for (const hour of SLOT_START_HOURS) {
       if (candidates.length >= limit) break;

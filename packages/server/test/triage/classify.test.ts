@@ -224,6 +224,39 @@ describe('classifyUrgency — urgency matrix (TEST_SCENARIOS #2-4, seed cross-ch
     expect(result.urgency).toBe('routine');
   });
 
+  it('"AC not cooling well" is degraded performance, not a total loss', async () => {
+    const result = await classifyUrgency({
+      statedIssue: "AC's not cooling well",
+      transcript: "My AC is not cooling well, it's not cooling well in the afternoons.",
+      vulnerablePersonPresent: null,
+      season: 'cooling',
+      propertyType: 'residential',
+    });
+    expect(result.urgency).toBe('routine');
+  });
+
+  it('"furnace is not heating well" is degraded performance, not a total loss', async () => {
+    const result = await classifyUrgency({
+      statedIssue: 'furnace is not heating well',
+      transcript: 'The furnace is not heating well, just a little weak lately.',
+      vulnerablePersonPresent: null,
+      season: 'heating',
+      propertyType: 'residential',
+    });
+    expect(result.urgency).toBe('routine');
+  });
+
+  it('"AC is not cooling" (no qualifier) is still a total loss', async () => {
+    const result = await classifyUrgency({
+      statedIssue: 'AC is not cooling',
+      transcript: 'The AC is not cooling at all.',
+      vulnerablePersonPresent: null,
+      season: 'cooling',
+      propertyType: 'residential',
+    });
+    expect(result.urgency).toBe('priority');
+  });
+
   it('total loss of both heat and cooling is always season-relevant', async () => {
     const result = await classifyUrgency({
       statedIssue: 'no heat and no AC',

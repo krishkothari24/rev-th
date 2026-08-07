@@ -1,8 +1,18 @@
 # TEST_SCENARIOS.md #7 — name, issue, and address all in one breath,
 # unprompted. The agent shouldn't re-ask for anything already given.
+#
+# Deliberately a furnace/heating issue, not AC: an AC-related statedIssue
+# derives `required_skills: [residential, refrigerant_epa]`
+# (triage/skills.ts), and Cobb has exactly one active residential +
+# refrigerant_epa technician by design (db/seed.ts) — genuinely empty
+# availability is a realistic outcome for that combination on any given
+# seeded day, which isn't what this scenario means to probe. A heating issue
+# only derives `[residential]`, so this stays a test of "don't re-ask what
+# you were already given," not a test of the scarce-skill availability path
+# (see no_availability_declines_gracefully.yaml for that).
 name: caller_volunteers_everything
 turns:
-  - user: "Hi, I'm Marcus Delaney at 77 Pinecrest Road in Smyrna, Cobb County, phone's 770-555-0194 — my AC's blowing warm on hot afternoons, nothing urgent."
+  - user: "Hi, I'm Marcus Delaney at 77 Pinecrest Road in Smyrna, Cobb County, phone's 770-555-0194 — my furnace filter light's been on for a while and it's due for its annual tune-up, nothing urgent."
   - user: "Yeah, next week sometime is fine, whatever's open."
 assert:
   - tool_called: book_appointment

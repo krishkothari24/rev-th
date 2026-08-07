@@ -125,8 +125,21 @@ const HEAT_EQUIPMENT = '\\b(?:furnace|heater|heat\\s*pump|heat)\\b';
 const COOLING_EQUIPMENT = '\\b(?:a/?c|air\\s*conditioner|air\\s*conditioning|cooling)\\b';
 const BROKEN_STATE = '\\b(?:out|down|dead|died|broken|quit|stopped)\\b';
 const SHORT_CYCLE = '\\bshort[- ]cycl\\w*';
-const NOT_HEATING = "\\b(?:won't|isn't|not)\\s+(?:heat\\w*|work\\w*|turn\\w*\\s+on|start\\w*)";
-const NOT_COOLING = "\\b(?:won't|isn't|not)\\s+(?:cool\\w*|work\\w*|turn\\w*\\s+on|start\\w*)";
+// "not cooling well/enough/like it used to" is degraded performance, not a
+// total loss — must not match the same as "not cooling" on its own. Without
+// this exclusion, "AC's not cooling well" (the seed's own degraded-issue
+// phrasing) wrongly classified as a total loss. See classify.test.ts.
+const DEGRADED_QUALIFIER =
+  '(?!\\s*(?:well|enough|as\\s+(?:well|much)|like\\s+it\\s+(?:should|used\\s+to)|completely|all\\s+the\\s+way))';
+// `\w*` before the lookahead must be anchored with `\b` — otherwise it
+// backtracks to a shorter match (e.g. "cool" out of "cooling") to dodge the
+// exclusion, since a partial-word match still satisfies "not followed by
+// 'well'" from that earlier position. `\b` forces it to consume the whole
+// word before the lookahead is even checked.
+const NOT_HEATING =
+  `\\b(?:won't|isn't|not)\\s+(?:heat\\w*\\b${DEGRADED_QUALIFIER}|work\\w*|turn\\w*\\s+on|start\\w*)`;
+const NOT_COOLING =
+  `\\b(?:won't|isn't|not)\\s+(?:cool\\w*\\b${DEGRADED_QUALIFIER}|work\\w*|turn\\w*\\s+on|start\\w*)`;
 
 const HEAT_LOSS_PATTERNS: RegExp[] = [
   /\bno\s+heat(?:ing)?\b/i,
@@ -145,7 +158,7 @@ const COOLING_LOSS_PATTERNS: RegExp[] = [
   near(COOLING_EQUIPMENT, BROKEN_STATE),
   near(COOLING_EQUIPMENT, NOT_COOLING),
   near(SHORT_CYCLE, COOLING_EQUIPMENT),
-  /\b(?:not|isn't|is\s+not)\s+cooling\b/i,
+  new RegExp(`\\b(?:not|isn't|is\\s+not)\\s+cooling${DEGRADED_QUALIFIER}\\b`, 'i'),
   /\bno\s+cool\s+air\b/i,
 ];
 

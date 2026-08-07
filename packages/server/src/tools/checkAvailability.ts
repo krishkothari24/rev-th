@@ -15,6 +15,14 @@ export const checkAvailabilitySchema = z
     county: countySchema,
     urgency: urgencySchema,
     required_skills: requiredSkillsSchema,
+    // Optional — set this when the caller names a specific day preference
+    // ("anytime tomorrow," "not until next week") so the search doesn't
+    // exhaust its 3-slot limit on today and never reach the day they asked
+    // for. Omit it for "whatever's soonest"/no preference.
+    earliest_date: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'earliest_date must be YYYY-MM-DD')
+      .optional(),
   })
   .strict();
 
@@ -26,6 +34,7 @@ export async function checkAvailabilityService(
   const slots = await findAvailableSlots({
     county: args.county,
     requiredSkills: args.required_skills,
+    earliestDateParam: args.earliest_date,
     limit: 3,
   });
 

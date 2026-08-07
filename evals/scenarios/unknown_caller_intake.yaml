@@ -6,9 +6,17 @@
 # number on-mic: dynamic ANI injection isn't wired up yet (that's Phase 6 —
 # see known_caller_recognition.yaml's xfail note), so right now a phone
 # number only ever reaches the model if the caller says it.
+#
+# Furnace, not AC, on purpose: an AC statedIssue derives `required_skills:
+# [residential, refrigerant_epa]` (triage/skills.ts), and Paulding has
+# exactly one active residential + refrigerant_epa technician by design
+# (db/seed.ts) — a genuinely empty availability search is a realistic
+# outcome there, and this scenario means to probe caller recognition and
+# booking, not the scarce-skill path (see
+# no_availability_declines_gracefully.yaml for that).
 name: unknown_caller_intake
 turns:
-  - user: "Hi, I need someone out to look at my AC, it's not cooling well."
+  - user: "Hi, I need someone out to look at my furnace, it's not heating well."
   - user: 'Sure — Jordan Blake, 770-555-0233, 61 Fernwood Trace, Hiram, Paulding County.'
   - user: 'Later this week is fine.'
 assert:
