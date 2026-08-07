@@ -24,6 +24,7 @@ import {
 import { BUSINESS_HOURS, SLOT_HOURS } from '../domain/constants.js';
 import { describeToolInvocation } from '../events/activityFormat.js';
 import { eventBus } from '../events/bus.js';
+import { zonedDateParam, zonedDayBounds } from '../lib/timezone.js';
 
 const SLOTS_PER_DAY = (BUSINESS_HOURS.endHour - BUSINESS_HOURS.startHour) / SLOT_HOURS;
 const ACTIVITY_LIMIT = 50;
@@ -36,31 +37,18 @@ export interface ResolvedBoardDate {
   end: Date;
 }
 
-function pad2(n: number): string {
-  return String(n).padStart(2, '0');
-}
-
 /**
- * `dateParam` is calendar-day granularity in the server's local timezone —
- * matches how `tools/availability.ts` generates slots (`setHours` on a local
- * `Date`), so "today" here and "today" a booking landed on always agree.
- * Falls back to the current day on a missing/malformed param rather than
- * rejecting the request — the dashboard's own date-nav always sends a valid
- * one, and a bad query param shouldn't blank the board.
+ * `dateParam` is calendar-day granularity in Summit Air's own timezone
+ * (`lib/timezone.ts`), not the server process's — matches how
+ * `tools/availability.ts` generates slots, so "today" here and "today" a
+ * booking landed on always agree regardless of which timezone the process
+ * happens to run in. Falls back to the current day on a missing/malformed
+ * param rather than rejecting the request — the dashboard's own date-nav
+ * always sends a valid one, and a bad query param shouldn't blank the board.
  */
 export function resolveBoardDate(dateParam?: string): ResolvedBoardDate {
-  const base =
-    dateParam && DATE_PARAM.test(dateParam)
-      ? (() => {
-          const [y, m, d] = dateParam.split('-').map(Number);
-          return new Date(y as number, (m as number) - 1, d as number);
-        })()
-      : new Date();
-
-  const start = new Date(base.getFullYear(), base.getMonth(), base.getDate(), 0, 0, 0, 0);
-  const end = new Date(start);
-  end.setDate(end.getDate() + 1);
-  const date = `${start.getFullYear()}-${pad2(start.getMonth() + 1)}-${pad2(start.getDate())}`;
+  const date = dateParam && DATE_PARAM.test(dateParam) ? dateParam : zonedDateParam(new Date());
+  const { start, end } = zonedDayBounds(date);
   return { date, start, end };
 }
 

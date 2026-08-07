@@ -9,11 +9,12 @@
  * job is to return the facts; deciding what's safe to say out loud is a
  * Phase 4+ prompt concern.
  */
-import { desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, ne } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { customers, equipment, type Equipment } from '../db/schema.js';
+import { appointments, customers, equipment, technicians, type Equipment } from '../db/schema.js';
 import { callIdSchema, phoneSchema } from './common.js';
+import { formatSlotLabel } from './availability.js';
 
 export const customerLookupSchema = z
   .object({
@@ -56,11 +57,37 @@ export async function customerLookupService(
     .where(eq(equipment.customerId, customer.id))
     .orderBy(desc(equipment.installYear));
 
+  // So "can you confirm my appointment" doesn't dead-end in
+  // transfer_to_human — the agent needs the fact, not just better phrasing
+  // for not having it. Nearest upcoming, booked-or-dispatched only.
+  const [nextAppt] = await db
+    .select({
+      id: appointments.id,
+      scheduledStart: appointments.scheduledStart,
+      scheduledEnd: appointments.scheduledEnd,
+      status: appointments.status,
+      technicianName: technicians.name,
+    })
+    .from(appointments)
+    .leftJoin(technicians, eq(appointments.technicianId, technicians.id))
+    .where(
+      and(
+        eq(appointments.customerId, customer.id),
+        gte(appointments.scheduledStart, new Date()),
+        ne(appointments.status, 'cancelled'),
+      ),
+    )
+    .orderBy(asc(appointments.scheduledStart))
+    .limit(1);
+
   const summaryParts = [
     customer.name,
     `${customer.addressLine}, ${customer.county} County`,
     customer.membershipTier ? MEMBERSHIP_LABEL[customer.membershipTier] : null,
     ...equipmentRows.map(describeEquipment),
+    nextAppt
+      ? `Upcoming appointment: ${formatSlotLabel(nextAppt.scheduledStart, nextAppt.scheduledEnd)}${nextAppt.technicianName ? ` with ${nextAppt.technicianName.split(' ')[0]}` : ''} (${nextAppt.status}).`
+      : null,
   ].filter((p): p is string => Boolean(p));
 
   return {
@@ -81,6 +108,17 @@ export async function customerLookupService(
         install_year: e.installYear,
         last_service_at: e.lastServiceAt ? e.lastServiceAt.toISOString() : null,
       })),
+      next_appointment: nextAppt
+        ? {
+            id: nextAppt.id,
+            scheduled_start: nextAppt.scheduledStart.toISOString(),
+            scheduled_end: nextAppt.scheduledEnd.toISOString(),
+            status: nextAppt.status,
+            technician_first_name: nextAppt.technicianName
+              ? nextAppt.technicianName.split(' ')[0]
+              : null,
+          }
+        : null,
     },
   };
 }

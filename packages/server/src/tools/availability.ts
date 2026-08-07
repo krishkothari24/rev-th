@@ -10,6 +10,7 @@ import { and, eq, gte, inArray, lt, ne } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { appointments, technicians } from '../db/schema.js';
 import { BUSINESS_HOURS, SLOT_HOURS, type County, type Skill } from '../domain/constants.js';
+import { BUSINESS_TIMEZONE, shiftDateParam, zonedDateParam, zonedWallTimeToUtc } from '../lib/timezone.js';
 
 /** 8, 10, 12, 14, 16 — mirrors the seed's SLOTS grid (src/db/seed.ts). */
 const SLOT_START_HOURS = Array.from(
@@ -79,20 +80,22 @@ export async function findAvailableSlots(opts: {
     bookedByTech.set(appt.technicianId, set);
   }
 
+  const nowDateParam = zonedDateParam(now);
+
   const candidates: SlotCandidate[] = [];
   for (let dayOffset = 0; dayOffset < SEARCH_DAYS && candidates.length < limit; dayOffset++) {
-    const day = new Date(now);
-    day.setDate(day.getDate() + dayOffset);
+    const dateParam = shiftDateParam(nowDateParam, dayOffset);
 
     for (const hour of SLOT_START_HOURS) {
       if (candidates.length >= limit) break;
 
-      const start = new Date(day);
-      start.setHours(hour, 0, 0, 0);
+      // Wall-clock hour in Summit Air's own timezone, not the server
+      // process's — see lib/timezone.ts. Getting this wrong means a slot
+      // quoted as "2 to 4" on the call lands on the board hours off.
+      const start = zonedWallTimeToUtc(dateParam, hour);
       if (start.getTime() < now.getTime()) continue;
 
-      const end = new Date(start);
-      end.setHours(end.getHours() + SLOT_HOURS);
+      const end = new Date(start.getTime() + SLOT_HOURS * 60 * 60 * 1000);
 
       const free = eligible.find((t) => !bookedByTech.get(t.id)?.has(start.getTime()));
       if (free) candidates.push({ technicianId: free.id, technicianName: free.name, start, end });
@@ -132,11 +135,16 @@ export async function findTechnicianForSlot(opts: {
 }
 
 const DAY_FMT = new Intl.DateTimeFormat('en-US', {
+  timeZone: BUSINESS_TIMEZONE,
   weekday: 'short',
   month: 'short',
   day: 'numeric',
 });
-const TIME_FMT = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' });
+const TIME_FMT = new Intl.DateTimeFormat('en-US', {
+  timeZone: BUSINESS_TIMEZONE,
+  hour: 'numeric',
+  minute: '2-digit',
+});
 
 /** e.g. "Tue, Aug 5, 2:00 PM–4:00 PM" — speakable, not a raw ISO timestamp. */
 export function formatSlotLabel(start: Date, end: Date): string {
