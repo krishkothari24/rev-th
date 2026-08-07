@@ -62,6 +62,32 @@ export function runRealtimeSession(
   /** Tracks whether a response is currently being generated, so a forced
    * safety interrupt knows whether there's anything to `response.cancel`. */
   let activeResponseId: string | null = null;
+  /** Realtime rejects a `response.create` sent while another response is
+   * still active (`conversation_already_has_active_response`) — observed on
+   * a real call where the tool-result confirmation and the safety-interrupt
+   * directive both raced an in-flight response and were silently dropped by
+   * the server (logged as a socket-level `error` event, invisible to the
+   * caller as anything but dead air / a stalled turn). Every call site that
+   * wants a new turn goes through `requestResponse()` instead of sending
+   * `response.create` directly; if one is already active, the request is
+   * deferred until `response.done`/`response.cancelled` confirms it's clear. */
+  let responseCreatePending = false;
+
+  function requestResponse(): void {
+    if (activeResponseId) {
+      responseCreatePending = true;
+      return;
+    }
+    send(socket, { type: 'response.create' });
+  }
+
+  function clearActiveResponse(): void {
+    activeResponseId = null;
+    if (responseCreatePending) {
+      responseCreatePending = false;
+      send(socket, { type: 'response.create' });
+    }
+  }
 
   // Serializes event handling in arrival order — classifyUrgency and tool
   // dispatch are both async, and two events landing close together must not
@@ -77,7 +103,13 @@ export function runRealtimeSession(
     const next = buildSystemPromptForTurn(state);
     if (next === lastPushedInstructions) return;
     lastPushedInstructions = next;
-    send(socket, { type: 'session.update', session: { instructions: next } });
+    // `session` requires its own `type` discriminator (same 'realtime' value
+    // as the accept() body) — omitting it errors every single call with
+    // `missing_required_parameter: session.type` (confirmed against a real
+    // call's server `error` event), which meant mid-call instruction
+    // updates — refreshed customer context, triage state — were silently
+    // failing on every real call since accept()'s payload shape changed.
+    send(socket, { type: 'session.update', session: { type: 'realtime', instructions: next } });
   }
 
   async function forceEmergencyInterrupt(directive: string): Promise<void> {
@@ -102,7 +134,15 @@ export function runRealtimeSession(
         content: [{ type: 'input_text', text: directive }],
       },
     });
-    send(socket, { type: 'response.create' });
+    // `requestResponse`, not a raw `response.create` — the `response.cancel`
+    // above is a request, not a confirmation; the response it targets is
+    // still nominally active until the server's own `response.cancelled`
+    // event lands. Sending `response.create` unconditionally right after,
+    // as this used to, raced that in-flight cancel and got rejected with
+    // `conversation_already_has_active_response` on a real call, which
+    // silently ate the forced safety directive's spoken turn — the one
+    // path in this file that's actually safety-critical.
+    requestResponse();
   }
 
   async function handleCallerTranscript(text: string): Promise<void> {
@@ -147,7 +187,7 @@ export function runRealtimeSession(
       type: 'conversation.item.create',
       item: { type: 'function_call_output', call_id: toolCallId, output: JSON.stringify(result) },
     });
-    send(socket, { type: 'response.create' });
+    requestResponse();
   }
 
   // NOTE: `toolCallId` here is OpenAI's function-call routing id — a
@@ -213,11 +253,11 @@ export function runRealtimeSession(
         return;
       }
       case 'response.cancelled': {
-        activeResponseId = null;
+        clearActiveResponse();
         return;
       }
       case 'response.done': {
-        activeResponseId = null;
+        clearActiveResponse();
         const response = event.response as
           | { status?: string; status_details?: unknown }
           | undefined;
@@ -274,7 +314,7 @@ export function runRealtimeSession(
   // opening turn ourselves as soon as the session is live; `instructions`
   // (set at accept()) already cover the greeting behavior, so this just
   // needs to trigger a response, not restate what to say.
-  send(socket, { type: 'response.create' });
+  requestResponse();
 
   socket.on('close', () => {
     finalizeConversation(state).catch((err: unknown) => {

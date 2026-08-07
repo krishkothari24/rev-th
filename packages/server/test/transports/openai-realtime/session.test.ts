@@ -249,6 +249,121 @@ describe('OpenAI Realtime session — runRealtimeSession', () => {
     client.close();
   });
 
+  it('sends session.update with a session.type discriminator (real API rejects it otherwise)', async () => {
+    // Regression test: `session.update` events omitting `session.type` were
+    // rejected on every real call with `missing_required_parameter:
+    // session.type` — silently, since it surfaces only as a server-side
+    // `error` event, not a socket close or a caller-visible failure. This
+    // meant mid-call instruction refreshes (customer context, triage state)
+    // never actually applied on a real phone call despite passing every
+    // fixture test that only checked the frame *arrived*, not its shape.
+    const started = await startFakeServer();
+    wss = started.wss;
+    const { client, server } = await connectPair(started.wss, started.port);
+    const collector = makeCollector(server);
+
+    const callId = 'rt-session-update-shape-1';
+    const state = await startConversation({
+      channel: 'voice',
+      externalId: callId,
+      callerPhone: '+17705550166',
+    });
+    runRealtimeSession(state, client, 'initial instructions');
+
+    // Any transcript not tripping the safety override still recomputes and
+    // pushes instructions (season/date context differs from the literal
+    // 'initial instructions' seed above), which is what exercises this path
+    // on a real call.
+    server.send(
+      JSON.stringify({
+        type: 'conversation.item.input_audio_transcription.completed',
+        transcript: 'Hi, I need to schedule a furnace tune-up.',
+      }),
+    );
+
+    const updateFrame = await collector.waitFor((f) => f.type === 'session.update');
+    const session = updateFrame.session as { type?: string; instructions?: string };
+    expect(session.type).toBe('realtime');
+    expect(session.instructions).toBeTruthy();
+
+    client.close();
+  });
+
+  it('defers response.create while a response is already active, then flushes it once that response finishes', async () => {
+    // Regression test: sending `response.create` unconditionally after a
+    // tool result — or after a `response.cancel` request whose confirmation
+    // hasn't arrived yet — raced an in-flight response on a real call and
+    // was rejected with `conversation_already_has_active_response`. That
+    // silently ate the model's turn to speak the tool result: the caller
+    // heard dead air (or, worse, the model recovering with a generic
+    // "dispatch will follow up" instead of a real booking confirmation).
+    const started = await startFakeServer();
+    wss = started.wss;
+    const { client, server } = await connectPair(started.wss, started.port);
+    const collector = makeCollector(server);
+
+    const callId = 'rt-session-response-race-1';
+    const fx = await seedFixtures();
+    const state = await startConversation({
+      channel: 'voice',
+      externalId: callId,
+      callerPhone: fx.customerPhone,
+    });
+    runRealtimeSession(state, client, 'initial instructions');
+
+    // Consume the session's own opening response.create (fired on connect)
+    // so it doesn't get confused with the one under test below.
+    await collector.waitFor((f) => f.type === 'response.create');
+    collector.frames.length = 0;
+
+    // Simulate a response still in flight when the tool call comes back —
+    // exactly what happens when the model's own turn that requested the
+    // tool call hasn't emitted response.done yet.
+    server.send(JSON.stringify({ type: 'response.created', response: { id: 'resp_active_1' } }));
+
+    server.send(
+      JSON.stringify({
+        type: 'response.function_call_arguments.done',
+        call_id: 'fc_race_1',
+        name: 'book_appointment',
+        arguments: JSON.stringify({
+          phone: fx.customerPhone,
+          name: 'Test Customer',
+          address_line: '100 Test Ln',
+          city: 'Marietta',
+          county: 'Cobb',
+          property_type: 'residential',
+          urgency: 'routine',
+          issue_summary: 'Annual tune-up',
+          required_skills: [],
+          scheduled_start: '2027-06-02T14:00:00.000Z',
+          source_channel: 'voice',
+        }),
+      }),
+    );
+
+    await collector.waitFor(
+      (f) =>
+        f.type === 'conversation.item.create' &&
+        (f.item as { type?: string } | undefined)?.type === 'function_call_output',
+    );
+
+    // The tool result landed, but the response.create it needs to be spoken
+    // must NOT have been sent yet — resp_active_1 is still active.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(collector.frames.some((f) => f.type === 'response.create')).toBe(false);
+
+    // Once the active response actually finishes, the deferred request
+    // flushes on its own.
+    server.send(
+      JSON.stringify({ type: 'response.done', response: { id: 'resp_active_1', status: 'completed' } }),
+    );
+
+    await collector.waitFor((f) => f.type === 'response.create');
+
+    client.close();
+  });
+
   it('finalizes the conversation when the socket closes', async () => {
     const started = await startFakeServer();
     wss = started.wss;

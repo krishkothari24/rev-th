@@ -36,7 +36,15 @@ export async function checkAvailabilityService(
         : '';
     return {
       slots: [],
-      note: `No technicians${skillNote} are open in ${args.county} County in the next ${SEARCH_DAYS} days — I can flag this for a callback or check a neighboring county.`,
+      // Deliberately avoids the word "flag" — this used to read "I can flag
+      // this for a callback," and on a real call the model reached for the
+      // literal `flag_emergency` tool off that word choice for an ordinary
+      // capacity gap (confirmed against a production emergency_flags row:
+      // reason no_ac_general, notes "Availability lookup returned no
+      // openings," on a call the deterministic triage would have scored
+      // routine — see prompts/agent_system_prompt.md's "Tool use" section
+      // for the accompanying instruction not to use flag_emergency here).
+      note: `No technicians${skillNote} are open in ${args.county} County in the next ${SEARCH_DAYS} days — try a neighboring county, or a dispatcher can follow up once one opens.`,
     };
   }
 

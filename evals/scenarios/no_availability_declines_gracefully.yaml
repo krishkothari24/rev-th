@@ -1,0 +1,21 @@
+# Not in the original BUILD_GUIDE §10 minimum suite — added after a real
+# call showed the agent misusing `flag_emergency` as a fallback once
+# `check_availability` came back empty (see prompts/agent_system_prompt.md's
+# "Tool use" section and tools/checkAvailability.ts's no-slots note, both
+# edited alongside this scenario). Paulding County is used deliberately, not
+# Cobb/Cherokee: none of Paulding's seeded technicians (db/seed.ts) carry
+# `refrigerant_epa`, and skills.ts's REFRIGERANT_PATTERN matches any bare
+# "air conditioner"/"a/c" mention — so an AC call routed to Paulding has zero
+# eligible technicians regardless of the day-scoped board state, unlike
+# Cobb/Cherokee's merely-scarce (but non-zero) coverage. That makes the
+# empty-slots branch deterministic here instead of dependent on which day the
+# suite happens to run.
+name: no_availability_declines_gracefully
+turns:
+  - user: "Hi, my air conditioner's blowing a little warm on hot afternoons — nothing urgent, just want someone to take a look when they can. It's a standard central AC unit at my house, residential."
+  - user: "I'm in Paulding County, 88 Silver Comet Trail, Dallas. Name's Owen Marsh, phone 770-555-0199."
+  - user: "Whenever's easiest for you all, I'm flexible."
+assert:
+  - tool_called: check_availability
+  - tool_not_called: book_appointment
+  - tool_not_called: flag_emergency
