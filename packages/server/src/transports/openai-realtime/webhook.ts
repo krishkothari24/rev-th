@@ -156,7 +156,11 @@ export async function registerOpenAIRealtimeWebhookRoute(
       reply.code(200).send();
 
       handleIncomingCall(callId, body.data, deps, req.log).catch((err: unknown) => {
-        req.log.error({ err, callId }, 'openai-realtime: failed to accept/connect call');
+        const message = err instanceof Error ? err.message : String(err);
+        req.log.error(
+          { err, callId },
+          `openai-realtime: failed to accept/connect call: ${message}`,
+        );
       });
     },
   );
