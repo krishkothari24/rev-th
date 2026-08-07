@@ -41,6 +41,13 @@ const schema = z.object({
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_REALTIME_MODEL: z.string().default('gpt-realtime'),
   OPENAI_REALTIME_VOICE: z.string().default('marin'),
+  // Input audio transcription defaults to *off* in the Realtime Calls API —
+  // omitting audio.input.transcription entirely means
+  // conversation.item.input_audio_transcription.completed never fires, which
+  // silently disables the gas-leak safety override on voice calls (it reads
+  // the transcript, and the transcript never arrives). gpt-live-transcribe is
+  // OpenAI's documented recommendation for live audio streams; see client.ts.
+  OPENAI_REALTIME_TRANSCRIBE_MODEL: z.string().default('gpt-live-transcribe'),
   // Svix-format webhook signing secret ("whsec_..."), issued when the
   // realtime.call.incoming webhook endpoint is configured in the OpenAI
   // dashboard. See transports/openai-realtime/signature.ts.

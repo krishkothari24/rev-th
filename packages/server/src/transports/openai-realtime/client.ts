@@ -28,6 +28,10 @@ export interface AcceptCallConfig {
   voice: string;
   instructions: string;
   tools: OpenAIRealtimeToolDefinition[];
+  /** Realtime's input transcription defaults to off — without this,
+   * `conversation.item.input_audio_transcription.completed` never fires and
+   * session.ts's triage/safety-override path never sees a transcript. */
+  transcribeModel: string;
 }
 
 const DEFAULT_API_BASE_URL = 'https://api.openai.com';
@@ -65,7 +69,12 @@ export async function acceptRealtimeCall(
       type: 'realtime',
       model: call.model,
       instructions: call.instructions,
-      audio: { output: { voice: call.voice } },
+      audio: {
+        input: {
+          transcription: { model: call.transcribeModel, delay: 'low' },
+        },
+        output: { voice: call.voice },
+      },
       tools: call.tools,
     }),
   });

@@ -69,6 +69,19 @@ export interface RegisterOpenAIRealtimeWebhookRouteOptions {
   connectSession?: typeof connectRealtimeSessionWithRetry;
 }
 
+// `startConversation` already dedupes the `conversations` row insert against
+// a retried call-start (onConflictDoNothing), but that guards the DB write
+// only — it does nothing to stop a redelivered `realtime.call.incoming`
+// webhook from calling accept() a second time and opening a second
+// WebSocket/`runRealtimeSession` loop for the same live call (Svix retries
+// on any delivery-layer failure even after our fast 200; a signature is
+// also technically replayable within the 5-minute freshness window). Two
+// concurrent sessions on one call_id means two greetings talking over each
+// other and duplicate tool-call handling. Single-process guard — sufficient
+// for this deployment (one Railway replica); would need to move to a DB row
+// or Redis lock before scaling to multiple instances.
+const callsInFlightOrHandled = new Set<string>();
+
 async function handleIncomingCall(
   callId: string,
   data: OpenAIWebhookBody['data'],
@@ -97,6 +110,7 @@ async function handleIncomingCall(
       voice: config.OPENAI_REALTIME_VOICE,
       instructions,
       tools: getOpenAIRealtimeToolDefinitions(),
+      transcribeModel: config.OPENAI_REALTIME_TRANSCRIBE_MODEL,
     },
     client,
   );
@@ -106,6 +120,10 @@ async function handleIncomingCall(
   );
 
   const socket = await deps.connectSession(callId, client, { logger: log });
+  // Release the in-flight guard once this call's socket actually closes —
+  // only *concurrent* duplicate deliveries need blocking; a call that has
+  // genuinely ended must not be permanently unable to be retried.
+  socket.once('close', () => callsInFlightOrHandled.delete(callId));
   runRealtimeSession(state, socket, instructions);
   log.info({ callId }, 'openai-realtime: session connected');
 }
@@ -160,12 +178,22 @@ export async function registerOpenAIRealtimeWebhookRoute(
 
       reply.code(200).send();
 
+      if (callsInFlightOrHandled.has(callId)) {
+        req.log.warn({ callId }, 'openai-realtime: duplicate call.incoming delivery, ignoring');
+        return;
+      }
+      callsInFlightOrHandled.add(callId);
+
       handleIncomingCall(callId, body.data, deps, req.log).catch((err: unknown) => {
         const message = err instanceof Error ? err.message : String(err);
         req.log.error(
           { err, callId },
           `openai-realtime: failed to accept/connect call: ${message}`,
         );
+        // accept/connect never got as far as opening a socket (no `close`
+        // event will ever come to release the guard) — release it here so a
+        // genuine retry of this call_id isn't blocked forever.
+        callsInFlightOrHandled.delete(callId);
       });
     },
   );

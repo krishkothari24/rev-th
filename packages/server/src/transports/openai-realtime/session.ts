@@ -212,9 +212,40 @@ export function runRealtimeSession(
         activeResponseId = response?.id ?? null;
         return;
       }
-      case 'response.done':
       case 'response.cancelled': {
         activeResponseId = null;
+        return;
+      }
+      case 'response.done': {
+        activeResponseId = null;
+        const response = event.response as
+          | { status?: string; status_details?: unknown }
+          | undefined;
+        if (response?.status && response.status !== 'completed') {
+          // Not fatal to the call — the session stays open — but a response
+          // that failed/was incomplete is exactly the kind of thing that
+          // silently degrades the conversation without any caller-visible
+          // signal (see this session's own accept/connect debugging: the
+          // API tends to fail quietly rather than loudly). Surface it.
+          console.error('[openai-realtime] response finished abnormally', {
+            callId: state.externalId,
+            status: response.status,
+            statusDetails: response.status_details,
+          });
+        }
+        return;
+      }
+      // The Realtime API reports malformed client events, invalid tool
+      // calls, and server-side failures via a distinct `error` event rather
+      // than closing the socket — dropped silently before this, which is
+      // exactly the kind of thing that would have hidden the real cause of
+      // this session's accept/connect bug for even longer. Always surface
+      // it; it's never a normal-path event.
+      case 'error': {
+        console.error('[openai-realtime] server error event', {
+          callId: state.externalId,
+          error: event.error,
+        });
         return;
       }
       case 'conversation.item.input_audio_transcription.completed': {
