@@ -234,6 +234,17 @@ export function runRealtimeSession(
     }
   });
 
+  // Per OpenAI's Realtime-SIP docs, nothing greets the caller automatically
+  // — the model only speaks once something sends `response.create`. Without
+  // this, a real call connects successfully (WS open, session live) and
+  // then just sits in silence forever: the caller waits for the agent to
+  // speak first, the agent waits for the caller, neither side ever sends
+  // anything, and there's no timeout to break the deadlock. Fire the
+  // opening turn ourselves as soon as the session is live; `instructions`
+  // (set at accept()) already cover the greeting behavior, so this just
+  // needs to trigger a response, not restate what to say.
+  send(socket, { type: 'response.create' });
+
   socket.on('close', () => {
     finalizeConversation(state).catch((err: unknown) => {
       console.error('[openai-realtime] finalize on close failed', err);
