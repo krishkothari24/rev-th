@@ -92,19 +92,23 @@ function sleep(ms: number): Promise<void> {
 
 /**
  * Retry-with-backoff around the first connect: OpenAI Realtime's `accept`
- * has been reported (community bug reports, not official docs — see
- * BUILD_GUIDE §12/IMPLEMENTATION_PLAN Phase 11) to occasionally return 200
- * fractionally before the WS endpoint for that call_id is actually live,
- * 404ing an immediate connect attempt. A short retry absorbs that instead of
- * treating one failed connect as a fatal, un-answerable call.
+ * returns 200 once "the SIP leg is ringing and the realtime session is being
+ * established" (per OpenAI's docs) — that's a 200 for the *acceptance*, not
+ * a guarantee the WS endpoint for that call_id is live yet. On a real phone
+ * call (unlike the fixture tests, which stub both calls) that gap has been
+ * observed to run several seconds, not fractions of one: a 300ms/3-attempt
+ * budget (~1s total) 404s every attempt and the call is never answered. Use
+ * exponential backoff with a wider budget (~13s across 6 attempts) so a slow
+ * session-establish doesn't read as a fatal, un-answerable call — still well
+ * inside a caller's ring-timeout tolerance.
  */
 export async function connectRealtimeSessionWithRetry(
   callId: string,
   client: RealtimeClientConfig,
   retry: ConnectRetryOptions = {},
 ): Promise<WebSocket> {
-  const attempts = retry.attempts ?? 3;
-  const delayMs = retry.delayMs ?? 300;
+  const attempts = retry.attempts ?? 6;
+  const initialDelayMs = retry.delayMs ?? 500;
   let lastErr: unknown;
 
   for (let i = 0; i < attempts; i += 1) {
@@ -128,7 +132,10 @@ export async function connectRealtimeSessionWithRetry(
       });
     } catch (err) {
       lastErr = err;
-      if (i < attempts - 1) await sleep(delayMs);
+      if (i < attempts - 1) {
+        const backoffMs = Math.min(initialDelayMs * 2 ** i, 3000);
+        await sleep(backoffMs);
+      }
     }
   }
 
