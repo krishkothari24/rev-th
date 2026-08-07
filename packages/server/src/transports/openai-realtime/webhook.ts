@@ -89,6 +89,7 @@ async function handleIncomingCall(
   const instructions = buildSystemPromptForTurn(state);
   const client: RealtimeClientConfig = { apiKey: requireEnv('OPENAI_API_KEY') };
 
+  const acceptStart = Date.now();
   await deps.acceptCall(
     callId,
     {
@@ -99,8 +100,12 @@ async function handleIncomingCall(
     },
     client,
   );
+  log.info(
+    { callId, elapsedMs: Date.now() - acceptStart },
+    'openai-realtime: accept succeeded, opening WS',
+  );
 
-  const socket = await deps.connectSession(callId, client);
+  const socket = await deps.connectSession(callId, client, { logger: log });
   runRealtimeSession(state, socket, instructions);
   log.info({ callId }, 'openai-realtime: session connected');
 }

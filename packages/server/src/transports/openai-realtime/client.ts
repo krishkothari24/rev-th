@@ -84,6 +84,10 @@ export function connectRealtimeSession(callId: string, client: RealtimeClientCon
 export interface ConnectRetryOptions {
   attempts?: number;
   delayMs?: number;
+  /** Optional per-attempt diagnostic hook — a full pino logger isn't
+   * threaded through the test seam, so this stays a minimal structural
+   * type rather than importing FastifyBaseLogger here. */
+  logger?: { info: (obj: Record<string, unknown>, msg: string) => void };
 }
 
 function sleep(ms: number): Promise<void> {
@@ -112,26 +116,42 @@ export async function connectRealtimeSessionWithRetry(
   let lastErr: unknown;
 
   for (let i = 0; i < attempts; i += 1) {
+    const attemptStart = Date.now();
     try {
-      return await new Promise<WebSocket>((resolve, reject) => {
-        const socket = connectRealtimeSession(callId, client);
+      const socket = await new Promise<WebSocket>((resolve, reject) => {
+        const ws = connectRealtimeSession(callId, client);
         const onOpen = (): void => {
           cleanup();
-          resolve(socket);
+          resolve(ws);
         };
         const onError = (err: unknown): void => {
           cleanup();
           reject(err instanceof Error ? err : new Error(String(err)));
         };
         function cleanup(): void {
-          socket.off('open', onOpen);
-          socket.off('error', onError);
+          ws.off('open', onOpen);
+          ws.off('error', onError);
         }
-        socket.once('open', onOpen);
-        socket.once('error', onError);
+        ws.once('open', onOpen);
+        ws.once('error', onError);
       });
+      retry.logger?.info(
+        { callId, attempt: i + 1, attempts, elapsedMs: Date.now() - attemptStart },
+        'openai-realtime: WS connect attempt succeeded',
+      );
+      return socket;
     } catch (err) {
       lastErr = err;
+      retry.logger?.info(
+        {
+          callId,
+          attempt: i + 1,
+          attempts,
+          elapsedMs: Date.now() - attemptStart,
+          err: err instanceof Error ? err.message : String(err),
+        },
+        'openai-realtime: WS connect attempt failed',
+      );
       if (i < attempts - 1) {
         const backoffMs = Math.min(initialDelayMs * 2 ** i, 3000);
         await sleep(backoffMs);
