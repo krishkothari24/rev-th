@@ -63,10 +63,31 @@ function today(offsetDays = 0): Date {
 
 // ------------------------------------------------------------ technicians
 //
-// Cobb (largest county): 4 active, redundant gas coverage, plus one inactive.
-// Cherokee: 3 active, exactly one gas-certified (Sofia Reyes).
+// Cobb (largest county): 5 active, redundant gas *and* refrigerant_epa
+// coverage.
+// Cherokee: 3 active, exactly one gas-certified (Sofia Reyes), and at least
+// one active residential+refrigerant_epa tech.
 // Paulding: 2 active, exactly one gas-certified (Colin Vasquez) — the
-// deliberately tight case BUILD_GUIDE calls out: one county, one gas tech.
+// deliberately tight case BUILD_GUIDE calls out: one county, one gas tech —
+// who is also this county's only refrigerant_epa coverage.
+//
+// Every county keeps at least one active technician who is BOTH
+// 'residential' and 'refrigerant_epa' (this got audited and fixed in one
+// pass, not per-county piecemeal): skills.ts's REFRIGERANT_PATTERN matches
+// any bare "AC"/"air conditioner" mention — deliberately broad, since EPA
+// 608 certification is a legal requirement — so almost every residential
+// cooling call derives required_skills ['residential', 'refrigerant_epa'].
+// Before this pass, the *only* technician in the entire roster with both
+// tags was Renata Kim, seeded `active: false` — meaning check_availability
+// legitimately, correctly returned zero slots for an ordinary "AC's not
+// cooling" call in all three counties, every time, regardless of the
+// board's schedule. Confirmed on a real call (reason `no_ac_general`,
+// PROMPT_CHANGELOG.md's "flag_emergency misuse" entry) before being traced
+// here. What's still *intentionally* uncovered: commercial work in
+// Paulding (nobody there carries 'commercial' at all) and commercial+gas in
+// Cherokee — both real gaps, left as-is, matching the project's own
+// "smaller county, tighter roster, route to a neighboring county"
+// realism — see docs/KNOWN_LIMITATIONS.md.
 
 interface TechSeed {
   name: string;
@@ -104,7 +125,7 @@ const TECHNICIANS: TechSeed[] = [
     name: 'Renata Kim',
     homeCounty: 'Cobb',
     skills: ['residential', 'commercial', 'gas', 'refrigerant_epa'],
-    active: false,
+    active: true,
   },
 
   {
@@ -116,13 +137,13 @@ const TECHNICIANS: TechSeed[] = [
   {
     name: 'Sofia Reyes',
     homeCounty: 'Cherokee',
-    skills: ['residential', 'gas', 'install'],
+    skills: ['residential', 'gas', 'install', 'refrigerant_epa'],
     active: true,
   },
   {
     name: 'Aiden Kowalski',
     homeCounty: 'Cherokee',
-    skills: ['commercial', 'refrigerant_epa', 'diagnostics'],
+    skills: ['commercial', 'refrigerant_epa', 'diagnostics', 'residential'],
     active: true,
   },
 
@@ -135,7 +156,7 @@ const TECHNICIANS: TechSeed[] = [
   {
     name: 'Colin Vasquez',
     homeCounty: 'Paulding',
-    skills: ['gas', 'residential', 'diagnostics'],
+    skills: ['gas', 'residential', 'diagnostics', 'refrigerant_epa'],
     active: true,
   },
 ];
