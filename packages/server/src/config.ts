@@ -48,6 +48,16 @@ const schema = z.object({
   // the transcript, and the transcript never arrives). gpt-live-transcribe is
   // OpenAI's documented recommendation for live audio streams; see client.ts.
   OPENAI_REALTIME_TRANSCRIBE_MODEL: z.string().default('gpt-live-transcribe'),
+  // Turn detection was unset entirely until this var was added — the call
+  // ran on the Realtime API's bare `server_vad` defaults (threshold 0.5,
+  // silence_duration_ms 500), tuned for a clean mic, not compressed phone/SIP
+  // audio. On a real call that read as choppy/unnatural: the agent cutting
+  // callers off mid-thought or getting interrupted by line noise. Semantic
+  // VAD uses a model to detect actual turn completion rather than raw
+  // silence — OpenAI's docs describe it as "less likely to interrupt the
+  // user during a speech-to-speech conversation," which targets this
+  // symptom directly. `auto` eagerness is the starting tune; see client.ts.
+  OPENAI_REALTIME_VAD_EAGERNESS: z.enum(['low', 'medium', 'high', 'auto']).default('auto'),
   // Svix-format webhook signing secret ("whsec_..."), issued when the
   // realtime.call.incoming webhook endpoint is configured in the OpenAI
   // dashboard. See transports/openai-realtime/signature.ts.

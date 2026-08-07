@@ -32,6 +32,9 @@ export interface AcceptCallConfig {
    * `conversation.item.input_audio_transcription.completed` never fires and
    * session.ts's triage/safety-override path never sees a transcript. */
   transcribeModel: string;
+  /** `semantic_vad` eagerness (config.OPENAI_REALTIME_VAD_EAGERNESS) — see
+   * the `turn_detection` block below for why this is set at all. */
+  vadEagerness: string;
 }
 
 const DEFAULT_API_BASE_URL = 'https://api.openai.com';
@@ -52,6 +55,15 @@ const DEFAULT_WS_BASE_URL = 'wss://api.openai.com';
  * every real phone call was ringing once and dying with the WS handshake
  * 404ing for a fixed ~5.2s on every attempt — consistent with the realtime
  * session never actually finishing setup, not just being slow to start.
+ *
+ * `audio.input.turn_detection` was entirely unset until this revision, which
+ * meant every call ran on the Realtime API's bare `server_vad` defaults —
+ * tuned for a clean mic, not compressed phone/SIP audio, and the most likely
+ * cause of a real call reading as choppy (agent cutting the caller off
+ * mid-thought, or getting interrupted by line noise mid-sentence). Explicit
+ * `semantic_vad` uses a model to judge actual turn completion instead of raw
+ * silence duration — OpenAI's docs: "less likely to interrupt the user
+ * during a speech-to-speech conversation."
  */
 export async function acceptRealtimeCall(
   callId: string,
@@ -72,6 +84,12 @@ export async function acceptRealtimeCall(
       audio: {
         input: {
           transcription: { model: call.transcribeModel, delay: 'low' },
+          turn_detection: {
+            type: 'semantic_vad',
+            eagerness: call.vadEagerness,
+            create_response: true,
+            interrupt_response: true,
+          },
         },
         output: { voice: call.voice },
       },

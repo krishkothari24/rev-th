@@ -169,7 +169,7 @@ describe('POST /webhooks/openai-realtime', () => {
     expect(acceptCall).toHaveBeenCalledTimes(1);
     const [acceptedCallId, acceptConfig] = acceptCall.mock.calls[0] as [
       string,
-      { instructions: string; tools: OpenAIRealtimeToolDefinition[] },
+      { instructions: string; tools: OpenAIRealtimeToolDefinition[]; vadEagerness: string },
     ];
     expect(acceptedCallId).toBe(callId);
     // Recognized-caller summary (§8.2/BUILD_GUIDE §3) landed in the
@@ -179,6 +179,9 @@ describe('POST /webhooks/openai-realtime', () => {
       expect.arrayContaining(['customer_lookup', 'check_availability', 'book_appointment']),
     );
     expect(acceptConfig.tools.every((t) => t.type === 'function')).toBe(true);
+    // config.OPENAI_REALTIME_VAD_EAGERNESS is threaded through so client.ts
+    // can build the turn_detection block — the choppy-turn-taking fix.
+    expect(acceptConfig.vadEagerness).toBe(config.OPENAI_REALTIME_VAD_EAGERNESS);
 
     const [connectedCallId] = connectSession.mock.calls[0] as [string];
     expect(connectedCallId).toBe(callId);

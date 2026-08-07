@@ -111,6 +111,7 @@ async function handleIncomingCall(
       instructions,
       tools: getOpenAIRealtimeToolDefinitions(),
       transcribeModel: config.OPENAI_REALTIME_TRANSCRIBE_MODEL,
+      vadEagerness: config.OPENAI_REALTIME_VAD_EAGERNESS,
     },
     client,
   );

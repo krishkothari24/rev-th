@@ -6,7 +6,7 @@
  * hand-sent fixture frames matching the documented event shapes (see
  * session.ts's docblock for the "confirm against real traffic" caveat).
  */
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import WebSocket, { WebSocketServer } from 'ws';
 import { eq } from 'drizzle-orm';
 import { db } from '../../../src/db/client.js';
@@ -361,6 +361,41 @@ describe('OpenAI Realtime session — runRealtimeSession', () => {
 
     await collector.waitFor((f) => f.type === 'response.create');
 
+    client.close();
+  });
+
+  it('tracks input_audio_buffer.speech_stopped -> response.created without warning on a fast turnaround', async () => {
+    // Regression coverage for the new latency instrumentation (SLOW_TURN_START_MS
+    // in session.ts): the handler must not throw on speech_stopped, and a quick
+    // response.created (the common case) must not produce a false [latency]
+    // warning. The exceeds-threshold branch isn't exercised here — asserting it
+    // would mean a real ~1.2s sleep in the suite for a pure-logging side effect,
+    // not worth the tradeoff for a demo-scale project.
+    const started = await startFakeServer();
+    wss = started.wss;
+    const { client, server } = await connectPair(started.wss, started.port);
+    const collector = makeCollector(server);
+
+    const callId = 'rt-session-latency-1';
+    const state = await startConversation({
+      channel: 'voice',
+      externalId: callId,
+      callerPhone: '+17705550155',
+    });
+    runRealtimeSession(state, client, 'initial instructions');
+
+    // Consume the session's own opening response.create fired on connect.
+    await collector.waitFor((f) => f.type === 'response.create');
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    server.send(JSON.stringify({ type: 'input_audio_buffer.speech_stopped' }));
+    server.send(JSON.stringify({ type: 'response.created', response: { id: 'resp_latency_1' } }));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(warnSpy).not.toHaveBeenCalled();
+
+    warnSpy.mockRestore();
     client.close();
   });
 

@@ -47,6 +47,16 @@ function send(socket: WebSocket, frame: Record<string, unknown>): void {
   socket.send(JSON.stringify(frame));
 }
 
+// Observability, not correctness — same reasoning and the same
+// `[latency]`-prefixed, console-based, threshold-only pattern as
+// `agent/providers/anthropic.ts`'s `SLOW_FIRST_TOKEN_MS`. This path had zero
+// latency instrumentation until now (nothing to grep if choppiness resurfaces
+// after the turn_detection fix in client.ts); this measures the gap between
+// the caller finishing speaking (`input_audio_buffer.speech_stopped`) and the
+// agent starting its next response (`response.created`) — the turn-taking
+// latency a caller actually feels as a pause or a cut-off.
+const SLOW_TURN_START_MS = 1200;
+
 /**
  * Drives one call's session for as long as `socket` stays open. Fire-and-
  * forget from the caller's perspective (webhook.ts) — everything happens
@@ -72,6 +82,9 @@ export function runRealtimeSession(
    * `response.create` directly; if one is already active, the request is
    * deferred until `response.done`/`response.cancelled` confirms it's clear. */
   let responseCreatePending = false;
+  /** Set on `input_audio_buffer.speech_stopped`, read (and cleared) on the
+   * next `response.created` — see `SLOW_TURN_START_MS` above. */
+  let lastSpeechStoppedAt: number | null = null;
 
   function requestResponse(): void {
     if (activeResponseId) {
@@ -116,15 +129,16 @@ export function runRealtimeSession(
     if (activeResponseId) {
       send(socket, { type: 'response.cancel', response_id: activeResponseId });
       // Deliberately does not also send `conversation.item.truncate` to trim
-      // already-buffered output audio — that needs the active item id/
-      // content index, which isn't tracked yet (would come off
-      // `response.output_item.added`). The actual safety control —
-      // `flag_emergency` — has already been dispatched by
-      // `fireSafetyOverride` before this function ever runs, independent of
-      // anything on this socket; what's imperfect here is at most a
-      // fraction of a second of already-buffered audio finishing before the
-      // forced directive starts, not the control itself. Close this gap
-      // before Phase 11 step 6's live safety re-test.
+      // already-buffered output audio. Confirmed against OpenAI's Realtime
+      // docs (not assumed): "In WebRTC and SIP connections the server
+      // manages a buffer of output audio, and thus knows how much audio has
+      // been played at a given moment. The server will automatically
+      // truncate unplayed audio when there's a user interruption." This
+      // call is SIP-trunked end to end (client.ts / docs/PHASE_11_RUNBOOK.md)
+      // — the truncation this comment used to flag as an open gap is already
+      // handled server-side. `response.cancel` above is still needed (it
+      // stops the *generation*, which the server's auto-truncate doesn't do
+      // on its own); nothing further to add here.
     }
     send(socket, {
       type: 'conversation.item.create',
@@ -247,9 +261,20 @@ export function runRealtimeSession(
     }
 
     switch (event.type) {
+      case 'input_audio_buffer.speech_stopped': {
+        lastSpeechStoppedAt = Date.now();
+        return;
+      }
       case 'response.created': {
         const response = event.response as { id?: string } | undefined;
         activeResponseId = response?.id ?? null;
+        if (lastSpeechStoppedAt !== null) {
+          const gapMs = Date.now() - lastSpeechStoppedAt;
+          lastSpeechStoppedAt = null;
+          if (gapMs > SLOW_TURN_START_MS) {
+            console.warn(`[latency] slow turn start: ${gapMs}ms (callId=${state.externalId})`);
+          }
+        }
         return;
       }
       case 'response.cancelled': {
