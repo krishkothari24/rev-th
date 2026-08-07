@@ -39,6 +39,15 @@ const DEFAULT_WS_BASE_URL = 'wss://api.openai.com';
  * voice, instructions, and tools in one call; there is no separate "create
  * session" step for a SIP-originated call the way there is for a
  * browser/WebRTC client.
+ *
+ * `voice` lives under `audio.output.voice` per the current Realtime Calls
+ * API reference — earlier revisions of this file sent it as a flat
+ * top-level field, which the API silently ignores rather than rejecting
+ * (accept() still returns 200 with no `audio` config applied at all).
+ * Found by comparing our request against OpenAI's documented schema after
+ * every real phone call was ringing once and dying with the WS handshake
+ * 404ing for a fixed ~5.2s on every attempt — consistent with the realtime
+ * session never actually finishing setup, not just being slow to start.
  */
 export async function acceptRealtimeCall(
   callId: string,
@@ -55,8 +64,8 @@ export async function acceptRealtimeCall(
     body: JSON.stringify({
       type: 'realtime',
       model: call.model,
-      voice: call.voice,
       instructions: call.instructions,
+      audio: { output: { voice: call.voice } },
       tools: call.tools,
     }),
   });
